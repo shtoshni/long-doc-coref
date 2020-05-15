@@ -1,0 +1,296 @@
+import sys
+from os import path
+
+import time
+import logging
+import torch
+from collections import defaultdict, OrderedDict
+
+import numpy as np
+import pytorch_utils.utils as utils
+from controller import Controller
+from litbank_utils.litbank_dataset import LitbankDataset
+from torch.utils.tensorboard import SummaryWriter
+
+EPS = 1e-8
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+
+
+class Experiment:
+    def __init__(self, data_dir=None, model_dir=None, best_model_dir=None,
+                 # Model params
+                 batch_size=32, seed=0,
+                 init_lr=1e-3, max_gradient_norm=1.0,
+                 max_epochs=20, eval=False, feedback=False,
+                 slurm_id=None,
+                 # Other params
+                 **kwargs):
+
+        self.single_window = kwargs['single_window']
+        self.slurm_id = slurm_id
+        # Set the random seed first
+        self.seed = seed
+        # Prepare data info
+        self.train_iter, self.valid_iter, self.test_iter \
+            = LitbankDataset.iters(
+                path=data_dir, batch_size=batch_size, single_window=self.single_window,
+                feedback=feedback)
+
+        if not slurm_id:
+            # Initialize Summary Writer
+            self.writer = SummaryWriter(path.join(model_dir, "logs"),
+                                        max_queue=500)
+        # Get model paths
+        self.model_dir = model_dir
+        self.data_dir = data_dir
+        self.model_path = path.join(model_dir, 'model.pth')
+        self.best_model_path = path.join(best_model_dir, 'model.pth')
+
+        # Initialize model and training metadata
+        self.model = Controller(**kwargs)
+        self.model = self.model.cuda()
+
+        if not eval:
+            self.initialize_setup(init_lr=init_lr)
+            self.model = self.model.cuda()
+            utils.print_model_info(self.model)
+            self.train(max_epochs=max_epochs,
+                       max_gradient_norm=max_gradient_norm)
+        # Finally evaluate model
+        self.final_eval(model_dir)
+
+    def initialize_setup(self, init_lr, lr_decay=10):
+        """Initialize model and training info."""
+        self.train_info = {}
+        self.optimizer = torch.optim.AdamW(
+            self.model.parameters(), lr=init_lr, eps=1e-6, weight_decay=0.0)
+        self.optim_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='max', factor=0.5, patience=3,
+            min_lr=0.1 * init_lr, verbose=True)
+        self.train_info['epoch'] = 0
+        self.train_info['val_perf'] = 0.0
+        self.train_info['threshold'] = 0.0
+        self.train_info['global_steps'] = 0
+
+        if not path.exists(self.model_path):
+            torch.manual_seed(self.seed)
+        else:
+            logging.info('Loading previous model: %s' % (self.model_path))
+            # Load model
+            self.load_model(self.model_path)
+
+    def train(self, max_epochs, max_gradient_norm):
+        """Train model"""
+        model = self.model
+        epochs_done = self.train_info['epoch']
+        optimizer = self.optimizer
+        scheduler = self.optim_scheduler
+        if not self.slurm_id:
+            writer = self.writer
+
+        for epoch in range(epochs_done, max_epochs):
+            print("\n\nStart Epoch %d" % (epoch + 1))
+            start_time = time.time()
+            # with autograd.detect_anomaly():
+            model.train()
+
+            for train_batch in self.train_iter:
+                self.train_info['global_steps'] += 1
+                loss = model(train_batch)
+                total_loss = loss['mention']
+                if not self.slurm_id:
+                    writer.add_scalar(
+                        "Loss/Total", total_loss,
+                        self.train_info['global_steps'])
+
+                if torch.isnan(total_loss):
+                    print("Loss is NaN")
+                    sys.exit()
+                # Backprop
+                optimizer.zero_grad()
+                total_loss.backward()
+                # Perform gradient clipping and update parameters
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), max_gradient_norm)
+
+                optimizer.step()
+
+            l2_norm_dict = utils.get_l2_norm(model)
+            # Update epochs done
+            self.train_info['epoch'] = epoch + 1
+            fscore = 0.0
+            threshold = 0.0
+            # Validation performance
+            val_loss, fscore, threshold = self.eval_model()
+
+            scheduler.step(fscore)
+
+            if not self.slurm_id:
+                # writer.add_scalars("Training/F-score",
+                #                    {'val': fscore, 'train': train_fscore},
+                #                    global_step=self.train_info['epoch'])
+                # writer.add_scalars("Training/Loss",
+                #                    {'val': val_loss, 'train': train_loss},
+                #                    global_step=self.train_info['epoch'])
+                writer.add_scalar("Training/Threshold", threshold,
+                                  global_step=self.train_info['epoch'])
+                writer.add_scalar("Training/L2_params", l2_norm_dict['param'],
+                                  global_step=self.train_info['epoch'])
+                writer.add_scalar("Training/L2_grad", l2_norm_dict['grad'],
+                                  global_step=self.train_info['epoch'])
+
+            # Update model if validation performance improves
+            if fscore > self.train_info['val_perf']:
+                self.train_info['val_perf'] = fscore
+                self.train_info['threshold'] = threshold
+                logging.info('Saving best model')
+                self.save_model(self.best_model_path)
+
+            # Save model
+            self.save_model(self.model_path)
+
+            # Get elapsed time
+            elapsed_time = time.time() - start_time
+            logging.info("Epoch: %d, Time: %.2f, F-score: %.3f Loss: %.3f"
+                         % (epoch + 1, elapsed_time, fscore,
+                            val_loss))
+
+            sys.stdout.flush()
+            if not self.slurm_id:
+                self.writer.flush()
+
+    def eval_preds(self, pred_mention_probs, gold_mentions, threshold=0.5):
+        pred_mentions = (pred_mention_probs >= threshold).float()
+        total_corr = torch.sum(pred_mentions * gold_mentions)
+
+        return total_corr, torch.sum(pred_mentions), torch.sum(gold_mentions)
+
+    def eval_model(self, split='valid', threshold=None):
+        """Eval model"""
+        # Set the random seed to get consistent results
+        model = self.model
+        model.eval()
+
+        # id_prefix, data_iter = None, None
+        # if split == 'valid':
+        #     id_prefix, data_iter = 'dev', self.valid_iter
+        # elif split == 'train':
+        #     id_prefix, data_iter = 'train', self.train_iter
+        # elif split == 'test':
+        #     id_prefix, data_iter = 'test', self.test_iter
+        data_iter = None
+        if split == 'valid':
+            data_iter = self.valid_iter
+        elif split == 'train':
+            data_iter = self.train_iter
+        elif split == 'test':
+            data_iter = self.test_iter
+
+        with torch.no_grad():
+            total_loss = 0.0
+            total_weight = 0.0
+            # Output file to write the outputs
+            agg_results = {}
+            for j, data_batch in enumerate(data_iter):
+                gold_start_lens = data_batch.gold_starts[1]
+                total_y = torch.sum(gold_start_lens)
+                batch_loss, batch_weight, preds, y = model(data_batch)
+                total_loss += batch_loss.item()
+                total_weight += batch_weight.item()
+
+                if threshold:
+                    corr, total_preds, _ = self.eval_preds(
+                        preds, y, threshold=threshold)
+                    if threshold not in agg_results:
+                        agg_results[threshold] = defaultdict(float)
+
+                    x = agg_results[threshold]
+                    x['corr'] += corr
+                    x['total_preds'] += total_preds
+                    x['total_y'] += total_y
+                    prec = x['corr']/(x['total_preds'] + EPS)
+                    recall = x['corr']/x['total_y']
+                    x['fscore'] = 2 * prec * recall/(prec + recall + EPS)
+                else:
+                    threshold_range = np.arange(0.0, 0.5, 0.01)
+                    for cur_threshold in threshold_range:
+                        corr, total_preds, _ = self.eval_preds(
+                            preds, y, threshold=cur_threshold)
+                        if cur_threshold not in agg_results:
+                            agg_results[cur_threshold] = defaultdict(float)
+
+                        x = agg_results[cur_threshold]
+                        x['corr'] += corr
+                        x['total_preds'] += total_preds
+                        x['total_y'] += total_y
+                        prec = x['corr']/x['total_preds']
+                        recall = x['corr']/x['total_y']
+                        x['fscore'] = 2 * prec * recall/(prec + recall + EPS)
+
+        avg_loss = total_loss/total_weight
+        if threshold:
+            max_fscore = agg_results[threshold]['fscore']
+        else:
+            max_fscore, threshold = 0, 0.0
+            for key in agg_results:
+                if agg_results[key]['fscore'] > max_fscore:
+                    max_fscore = agg_results[key]['fscore']
+                    threshold = key
+
+            logging.info("Max F-score: %.3f, Threshold: %.3f" %
+                         (max_fscore, threshold))
+
+        return avg_loss, max_fscore, threshold
+
+    def final_eval(self, model_dir):
+        """Evaluate the model on train, dev, and test"""
+        # Test performance  - Load best model
+        self.load_model(self.best_model_path)
+        logging.info("Loading best model after epoch: %d" %
+                     self.train_info['epoch'])
+        logging.info("Threshold: %.3f" % self.train_info['threshold'])
+        threshold = self.train_info['threshold']
+
+        perf_file = path.join(self.model_dir, "perf.txt")
+        with open(perf_file, 'w') as f:
+            for split in ['Train', 'Valid', 'Test']:
+                logging.info('\n')
+                logging.info('%s' % split)
+                split_loss, split_f1, _ = self.eval_model(
+                    split.lower(), threshold=threshold)
+                logging.info('Calculated F1: %.3f' % split_f1)
+
+                f.write("%s\t%.4f\n" % (split, split_f1))
+                if not self.slurm_id:
+                    self.writer.add_scalar(
+                        "F-score/{}".format(split), split_f1)
+            logging.info("Final performance summary at %s" % perf_file)
+
+        sys.stdout.flush()
+        if not self.slurm_id:
+            self.writer.close()
+
+    def load_model(self, location):
+        checkpoint = torch.load(location)
+        self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        self.optimizer.load_state_dict(
+            checkpoint['optimizer_state_dict'])
+        self.optim_scheduler.load_state_dict(
+            checkpoint['scheduler_state_dict'])
+        self.train_info = checkpoint['train_info']
+        torch.set_rng_state(checkpoint['rng_state'])
+
+    def save_model(self, location):
+        """Save model"""
+        model_state_dict = OrderedDict(self.model.state_dict())
+        for key in self.model.state_dict():
+            if 'bert.' in key:
+                del model_state_dict[key]
+        torch.save({
+            'train_info': self.train_info,
+            'model_state_dict': model_state_dict,
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.optim_scheduler.state_dict(),
+            'rng_state': torch.get_rng_state(),
+        }, location)
+        logging.info("Model saved at: %s" % (location))

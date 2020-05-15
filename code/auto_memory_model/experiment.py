@@ -1,0 +1,343 @@
+import sys
+from os import path
+import os
+import time
+import logging
+import torch
+import json
+from collections import defaultdict, OrderedDict
+import numpy as np
+from torch.utils.tensorboard import SummaryWriter
+
+from utils import action_sequences_to_clusters, classify_errors
+from litbank_utils.utils import load_litbank_data
+from coref_utils.conll import evaluate_conll
+from coref_utils.utils import mention_to_cluster
+from coref_utils.metrics import CorefEvaluator
+import pytorch_utils.utils as utils
+from controller import Controller
+
+
+EPS = 1e-8
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+
+
+class Experiment:
+    def __init__(self, data_dir=None, conll_data_dir=None,
+                 model_dir=None, best_model_dir=None,
+                 # Model params
+                 batch_size=32, seed=0, init_lr=1e-3, max_gradient_norm=5.0,
+                 max_epochs=20, max_segment_len=128, eval=False, feedback=False,
+                 no_singletons=False,
+                 # Other params
+                 slurm_id=None, conll_scorer=None, **kwargs):
+
+        # Set the random seed first
+        self.seed = seed
+        # Prepare data info
+        self.train_examples, self.dev_examples, self.test_examples \
+            = load_litbank_data(data_dir, max_segment_len)
+        if feedback:
+            self.train_examples = self.train_examples[:20]
+
+        self.data_iter_map = {"train": self.train_examples,
+                              "dev": self.dev_examples,
+                              "test": self.test_examples}
+        self.cluster_threshold = (2 if no_singletons else 1)
+
+        self.slurm_id = slurm_id
+        self.conll_scorer = conll_scorer
+
+        if not slurm_id:
+            # Initialize Summary Writer
+            self.writer = SummaryWriter(path.join(model_dir, "logs"),
+                                        max_queue=500)
+        # Get model paths
+        self.model_dir = model_dir
+        self.data_dir = data_dir
+        self.conll_data_dir = conll_data_dir
+        self.model_path = path.join(model_dir, 'model.pth')
+        self.best_model_path = path.join(best_model_dir, 'model.pth')
+
+        # Initialize model and training metadata
+        self.model = Controller(**kwargs).cuda()
+        self.initialize_setup(init_lr=init_lr)
+        utils.print_model_info(self.model)
+
+        if not eval:
+            self.train(max_epochs=max_epochs,
+                       max_gradient_norm=max_gradient_norm)
+
+        # Finally evaluate model
+        self.final_eval()
+
+    def initialize_setup(self, init_lr, lr_decay=10):
+        """Initialize model and training info."""
+        self.train_info = {}
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=init_lr, eps=1e-6)
+        self.optim_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', factor=0.1, patience=3,
+            min_lr=0.1 * init_lr, verbose=True)
+        self.train_info['epoch'] = 0
+        self.train_info['val_perf'] = 0.0
+        self.train_info['global_steps'] = 0
+
+        if not path.exists(self.model_path):
+            torch.manual_seed(self.seed)
+            np.random.seed(self.seed)
+        else:
+            logging.info('Loading previous model: %s' % (self.model_path))
+            # Load model
+            self.load_model(self.model_path)
+
+    def train(self, max_epochs, max_gradient_norm):
+        """Train model"""
+        model = self.model
+        epochs_done = self.train_info['epoch']
+        optimizer = self.optimizer
+        scheduler = self.optim_scheduler
+        if not self.slurm_id:
+            writer = self.writer
+
+        for epoch in range(epochs_done, max_epochs):
+            print("\n\nStart Epoch %d" % (epoch + 1))
+            start_time = time.time()
+            # Setup training
+            model.train()
+            np.random.shuffle(self.train_examples)
+            batch_loss = 0
+            errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0),
+                                  ("WO", 0), ("FL", 0), ("C", 0)])
+            for example in self.train_examples:
+                self.train_info['global_steps'] += 1
+                loss, pred_action_list = model(example)
+                batch_errors = classify_errors(pred_action_list, example["actions"])
+                for key in errors:
+                    errors[key] += batch_errors[key]
+
+                total_loss = loss['coref']
+                batch_loss += total_loss.item()
+                if not self.slurm_id:
+                    writer.add_scalar("Loss/Total", total_loss, self.train_info['global_steps'])
+
+                if torch.isnan(total_loss):
+                    print("Loss is NaN")
+                    sys.exit()
+                # Backprop
+                optimizer.zero_grad()
+                total_loss.backward()
+                # Perform gradient clipping and update parameters
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), max_gradient_norm)
+
+                optimizer.step()
+
+                if self.train_info['global_steps'] % 10 == 0:
+                    print(example["doc_key"], total_loss.item())
+
+            logging.info(errors)
+            # Update epochs done
+            self.train_info['epoch'] = epoch + 1
+
+            # Evaluate auto regressive performance on dev set
+            val_loss = self.eval_auto_reg()
+            scheduler.step(val_loss)
+
+            # Dev performance
+            fscore = self.eval_model()
+            # Save model
+            self.save_model(self.model_path)
+
+            # Update model if dev performance improves
+            if fscore > self.train_info['val_perf']:
+                self.train_info['val_perf'] = fscore
+                logging.info('Saving best model')
+                self.save_model(self.best_model_path)
+
+            # Get elapsed time
+            elapsed_time = time.time() - start_time
+            logging.info("Epoch: %d, F1: %.1f, Max F1: %.1f, Time: %.2f, Loss: %.3f, Val Loss: %.3f"
+                         % (epoch + 1, fscore, self.train_info['val_perf'], elapsed_time,
+                            batch_loss/len(self.train_examples), val_loss))
+
+            sys.stdout.flush()
+            if not self.slurm_id:
+                self.writer.flush()
+
+    def eval_auto_reg(self):
+        """Train model"""
+        model = self.model
+        model.eval()
+        errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0),
+                              ("WO", 0), ("FL", 0), ("C", 0)])
+        batch_loss = 0
+        pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
+        corr_actions, total_actions = 0, 0
+        with torch.no_grad():
+            for example in self.dev_examples:
+                loss, pred_action_list = model(example, get_next_pred_errors=True)
+                batch_errors = classify_errors(pred_action_list, example["actions"])
+                for key in errors:
+                    errors[key] += batch_errors[key]
+
+                for pred_action, gt_action in zip(pred_action_list, example["actions"]):
+                    pred_class_counter[pred_action[1]] += 1
+                    gt_class_counter[gt_action[1]] += 1
+
+                    if tuple(pred_action) == tuple(gt_action):
+                        corr_actions += 1
+
+                total_actions += len(example["actions"])
+                total_loss = loss['coref']
+                batch_loss += total_loss.item()
+
+        # logging.info("Val loss: %.3f" % batch_loss)
+        logging.info("Dev: %s", str(errors))
+        logging.info("(Teacher forced) Action accuracy: %.3f", corr_actions/total_actions)
+        model.train()
+        return batch_loss/len(self.dev_examples)
+
+    def eval_model(self, split='dev'):
+        """Eval model"""
+        # Set the random seed to get consistent results
+        model = self.model
+        model.eval()
+
+        data_iter = self.data_iter_map[split]
+
+        pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
+        num_gt_clusters, num_pred_clusters = 0, 0
+
+        with torch.no_grad():
+            log_file = path.join(self.model_dir, split + ".log.jsonl")
+            with open(log_file, 'w') as f:
+                # Capture the auxiliary action accuracy
+                corr_actions = 0.0
+                total_actions = 0.0
+
+                # Output file to write the outputs
+                evaluator = CorefEvaluator()
+                oracle_evaluator = CorefEvaluator()
+                coref_predictions, subtoken_maps = {}, {}
+                for example in data_iter:
+                    loss, action_list = model(example)
+                    for pred_action, gt_action in zip(action_list, example["actions"]):
+                        pred_class_counter[pred_action[1]] += 1
+                        gt_class_counter[gt_action[1]] += 1
+
+                        if tuple(pred_action) == tuple(gt_action):
+                            corr_actions += 1
+                    total_actions += len(action_list)
+
+                    predicted_clusters = action_sequences_to_clusters(
+                        action_list, example["ord_mentions"])
+                    coref_predictions[example["doc_key"]] = predicted_clusters
+                    subtoken_maps[example["doc_key"]] = example["subtoken_map"]
+
+                    predicted_clusters, mention_to_predicted =\
+                        mention_to_cluster(predicted_clusters, threshold=self.cluster_threshold)
+                    gold_clusters, mention_to_gold =\
+                        mention_to_cluster(example["clusters"], threshold=self.cluster_threshold)
+
+                    # Update the number of clusters
+                    num_gt_clusters += len(gold_clusters)
+                    num_pred_clusters += len(predicted_clusters)
+
+                    oracle_clusters, mention_to_oracle = \
+                        mention_to_cluster(example["oracle_clusters"],
+                                           threshold=self.cluster_threshold)
+                    evaluator.update(predicted_clusters, gold_clusters,
+                                     mention_to_predicted, mention_to_gold)
+                    oracle_evaluator.update(oracle_clusters, gold_clusters,
+                                            mention_to_oracle, mention_to_gold)
+
+                    log_example = dict(example)
+                    log_example["pred_actions"] = action_list
+                    log_example["predicted_clusters"] = predicted_clusters
+
+                    f.write(json.dumps(log_example) + "\n")
+
+                # Print individual metrics
+                indv_metrics_list = ['MUC', 'Bcub', 'CEAFE']
+                perf_str = ""
+                for indv_metric, indv_evaluator in zip(indv_metrics_list, evaluator.evaluators):
+                    perf_str += ", " + indv_metric + ": {:.1f}".format(indv_evaluator.get_f1() * 100)
+
+                prec, rec, fscore = evaluator.get_prf()
+                fscore = fscore * 100
+                logging.info("F-score: %.1f %s" % (fscore, perf_str))
+
+                if False:
+                    gold_path = path.join(self.conll_data_dir, split + ".conll")
+                    conll_results = evaluate_conll(
+                        self.conll_scorer, gold_path, coref_predictions, subtoken_maps)
+                    average_f1 = sum(results for results in conll_results.values()) / len(conll_results)
+                    logging.info("(CoNLL) F-score : %.3f, MUC: %.3f, Bcub: %.3f, CEAFE: %.3f"
+                                 % (average_f1, conll_results["muc"], conll_results['bcub'],
+                                    conll_results['ceafe']))
+
+                logging.info("Action accuracy: %.3f, Oracle F-score: %.3f" %
+                             (corr_actions/total_actions, oracle_evaluator.get_prf()[2]))
+                logging.info(log_file)
+
+        return fscore
+
+    def final_eval(self):
+        """Evaluate the model on train, dev, and test"""
+        # Test performance  - Load best model
+        self.load_model(self.best_model_path)
+        logging.info("Loading best model after epoch: %d" %
+                     self.train_info['epoch'])
+
+        perf_file = path.join(self.model_dir, "perf.txt")
+        if self.slurm_id:
+            parent_dir = path.dirname(path.normpath(self.model_dir))
+            perf_dir = path.join(parent_dir, "perf")
+            if not path.exists(perf_dir):
+                os.makedirs(perf_dir)
+            perf_file = path.join(perf_dir, self.slurm_id + ".txt")
+
+        with open(perf_file, 'w') as f:
+            for split in ['Train', 'Dev', 'Test']:
+                logging.info('\n')
+                logging.info('%s' % split)
+                split_f1 = self.eval_model(split.lower())
+                logging.info('Calculated F1: %.3f' % split_f1)
+
+                f.write("%s\t%.4f\n" % (split, split_f1))
+                if not self.slurm_id:
+                    self.writer.add_scalar(
+                        "F-score/{}".format(split), split_f1)
+            logging.info("Final performance summary at %s" % perf_file)
+
+        sys.stdout.flush()
+        if not self.slurm_id:
+            self.writer.close()
+
+    def load_model(self, location):
+        checkpoint = torch.load(location)
+        self.model.load_state_dict(checkpoint['model'], strict=False)
+        self.optimizer.load_state_dict(
+            checkpoint['optimizer'])
+        self.optim_scheduler.load_state_dict(
+            checkpoint['scheduler'])
+        self.train_info = checkpoint['train_info']
+        torch.set_rng_state(checkpoint['rng_state'])
+        np.random.set_state(checkpoint['np_rng_state'])
+
+    def save_model(self, location):
+        """Save model"""
+        model_state_dict = OrderedDict(self.model.state_dict())
+        for key in self.model.state_dict():
+            if 'bert.' in key:
+                del model_state_dict[key]
+        torch.save({
+            'train_info': self.train_info,
+            'model': model_state_dict,
+            'optimizer': self.optimizer.state_dict(),
+            'scheduler': self.optim_scheduler.state_dict(),
+            'rng_state': torch.get_rng_state(),
+            'np_rng_state': np.random.get_state()
+        }, location)
+        # logging.info("Model saved at: %s" % (location))

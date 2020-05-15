@@ -1,0 +1,10 @@
+models/*
+litbank_html/*
+figs/*
+lrec2020-coref/*
+conda_env/*
+resources/*
+litbank/*
+*/__pycache__/*
+*.out
+data/*
