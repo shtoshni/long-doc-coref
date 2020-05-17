@@ -3,9 +3,8 @@ import os
 from os import path
 import hashlib
 import logging
-
-from collections import OrderedDict
 import subprocess
+from collections import OrderedDict
 
 from experiment import Experiment
 
@@ -46,31 +45,29 @@ def main():
                         type=str, help='If true use an RNN on top of mention embeddings.')
 
     # Memory variables
+    parser.add_argument('-mem_type', default='fixed_mem', choices=['fixed_mem', 'lru'],
+                        help="Memory type.")
     parser.add_argument('-num_cells', default=20, type=int,
                         help="Number of memory cells.")
     parser.add_argument('-mem_size', default=None, type=int,
                         help='Memory size used in the model')
     parser.add_argument('-mlp_size', default=1000, type=int,
                         help='MLP size used in the model')
+    parser.add_argument('-mlp_depth', default=1, type=int,
+                        help='Number of hidden layers')
     parser.add_argument('-entity_rep', default='avg', type=str,
                         choices=['lstm', 'gru', 'max', 'avg'],
                         help='Entity representation.')
-    # parser.add_argument('-use_mem_rnn', default=False, action="store_true",
-    #                     help='If false use max pool, else use RNN.')
-    # parser.add_argument('-use_mem_lstm', default=False, action="store_true",
-    #                     help='Whether to use LSTM or GRU for memory cells or not.')
     parser.add_argument('-emb_size', default=20, type=int,
                         help='Embedding size of features.')
     parser.add_argument('-use_last_mention', default=False, action="store_true",
                         help="Use last mention along with the global features if True.")
-    parser.add_argument('-use_lru', default=False, action="store_true",
-                        help="Use LRU mechanism to overwrite.")
 
     # Training params
     parser.add_argument('--batch_size', '-bsize',
                         help='Batch size', default=1, type=int)
-    parser.add_argument('-coref_loss_wt', help='Weight of coref loss',
-                        default=1.0, type=float)
+    parser.add_argument('-over_loss_wt', help='Weight of overwrite loss',
+                        default=0.01, type=float)
     parser.add_argument('-max_span_length', default=10,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-feedback', default=False, action='store_true',
@@ -95,11 +92,12 @@ def main():
     # Get model directory name
     opt_dict = OrderedDict()
     # Only include important options in hash computation
-    imp_opts = ['model', 'max_segment_len', 'use_doc_rnn', 'use_lru',
+    imp_opts = ['model', 'max_segment_len', 'use_doc_rnn',  'ment_emb',  # Encoder params
+                'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
+                'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
-                'feedback', 'coref_loss_wt', 'cross_val_split',
-                'entity_rep', 'mlp_size', 'num_cells', 'mem_size',
-                'ment_emb', 'emb_size', 'use_last_mention']
+                'feedback', 'cross_val_split', 'over_loss_wt',  # Training params
+                ]
     for key, val in vars(args).items():
         if key in imp_opts:
             opt_dict[key] = val
@@ -118,8 +116,8 @@ def main():
         os.makedirs(best_model_dir)
 
     args.data_dir = path.join(
-        args.base_data_dir, "autoregressive/{}/{}".format(
-            args.cross_val_split, args.num_cells))
+        args.base_data_dir, f'autoregressive/{args.mem_type}/{args.cross_val_split}/{args.num_cells}')
+    # print(args.data_dir)
     args.conll_data_dir = path.join(
         args.base_data_dir, "litbank_tenfold_splits/{}".format(args.cross_val_split))
     print(args.data_dir)
@@ -130,8 +128,8 @@ def main():
 
     # Slurm args
     if not args.slurm_id:
-        p = subprocess.Popen(['tensorboard', '--logdir',  log_dir],
-                             stdout=subprocess.PIPE, stderr=None)
+        tensorboard_process = subprocess.Popen(['tensorboard', '--logdir',  log_dir],
+                                               stdout=subprocess.PIPE, stderr=None)
 
     config_file = path.join(model_dir, 'config')
     with open(config_file, 'w') as f:
@@ -143,7 +141,7 @@ def main():
         Experiment(**vars(args))
     finally:
         if not args.slurm_id:
-            p.kill()
+            tensorboard_process.kill()
 
 
 if __name__ == "__main__":

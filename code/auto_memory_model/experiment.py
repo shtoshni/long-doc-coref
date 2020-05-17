@@ -15,8 +15,8 @@ from coref_utils.conll import evaluate_conll
 from coref_utils.utils import mention_to_cluster
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
-from controller import Controller
-
+from auto_memory_model.controller.lfm_controller import LearnedFixedMemController
+from auto_memory_model.controller.lru_controller import LRUController
 
 EPS = 1e-8
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -28,6 +28,7 @@ class Experiment:
                  # Model params
                  batch_size=32, seed=0, init_lr=1e-3, max_gradient_norm=5.0,
                  max_epochs=20, max_segment_len=128, eval=False, feedback=False,
+                 mem_type=False,
                  no_singletons=False,
                  # Other params
                  slurm_id=None, conll_scorer=None, **kwargs):
@@ -60,7 +61,10 @@ class Experiment:
         self.best_model_path = path.join(best_model_dir, 'model.pth')
 
         # Initialize model and training metadata
-        self.model = Controller(**kwargs).cuda()
+        if mem_type == 'fixed_mem':
+            self.model = LearnedFixedMemController(**kwargs).cuda()
+        elif mem_type == 'lru':
+            self.model = LRUController(**kwargs).cuda()
         self.initialize_setup(init_lr=init_lr)
         utils.print_model_info(self.model)
 
@@ -116,7 +120,7 @@ class Experiment:
                 for key in errors:
                     errors[key] += batch_errors[key]
 
-                total_loss = loss['coref']
+                total_loss = loss['total']
                 batch_loss += total_loss.item()
                 if not self.slurm_id:
                     writer.add_scalar("Loss/Total", total_loss, self.train_info['global_steps'])
@@ -176,7 +180,7 @@ class Experiment:
         corr_actions, total_actions = 0, 0
         with torch.no_grad():
             for example in self.dev_examples:
-                loss, pred_action_list = model(example, get_next_pred_errors=True)
+                loss, pred_action_list = model(example, teacher_forcing=True)
                 batch_errors = classify_errors(pred_action_list, example["actions"])
                 for key in errors:
                     errors[key] += batch_errors[key]

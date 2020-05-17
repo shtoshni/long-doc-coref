@@ -45,6 +45,11 @@ def get_actions(clusters, num_cells=5):
     # Initialize with all the mentions
     cluster_to_rem_mentions = [len(cluster) for cluster in clusters]
 
+    non_optimal_overwrites = 0
+    total_overwrites = 0
+
+    lru_list = list(range(num_cells))
+
     for mention in ordered_mentions:
         used_cell_idx = None
         mention_cluster = mention_to_cluster[tuple(mention)]
@@ -70,14 +75,18 @@ def get_actions(clusters, num_cells=5):
                     # The cell is not in use
                     cell_rem_mentions = -1
 
-                cell_info.append((cell_rem_mentions, cell_to_last_used[cell_idx], cell_idx))
+                cell_info.append((cell_rem_mentions, cell_to_last_used[cell_idx], cell_idx,
+                                  lru_list.index(cell_idx)))
 
-            # Sort the cells primarily by the number of remaining mentions
+            # Original sorting the cells primarily by the number of remaining mentions
             # If the remaining mentions are tied, then compare the last used cell
-            cell_info = sorted(cell_info, key=lambda x: x[0] - 1e-10 * x[1])
-            min_remaining_mentions = cell_info[0][0]
+            orig_cell_info = sorted(cell_info, key=lambda x: x[0] - 1e-10 * x[1])
+            # Sort cells by least recently used cells
+            cell_info = sorted(cell_info, key=lambda x: x[3])
+            # Remaining mentions in least recently used cell
+            lru_remaining_mentions = cell_info[0][0]
 
-            if cur_rem_mentions > min_remaining_mentions:
+            if cur_rem_mentions > lru_remaining_mentions:
                 used_cell_idx = cell_info[0][2]  # Get the cell index
 
             if used_cell_idx is None:
@@ -95,16 +104,22 @@ def get_actions(clusters, num_cells=5):
                 cluster_to_cell[mention_cluster] = used_cell_idx
                 cell_to_cluster[used_cell_idx] = mention_cluster
 
+                total_overwrites += 1
+                if cell_info[0][0] > orig_cell_info[0][0]:
+                    non_optimal_overwrites += 1
+
         # Update the cell_to_last_used index
         for cell_idx in range(num_cells):
             cell_to_last_used[cell_idx] += 1
         if used_cell_idx is not None:
             cell_to_last_used[used_cell_idx] = 0
+            lru_list.remove(used_cell_idx)
+            lru_list.append(used_cell_idx)
 
         # Reduce the number of mentions remaining in the current cluster
         cluster_to_rem_mentions[mention_cluster] -= 1
 
-    return actions
+    return actions, non_optimal_overwrites, total_overwrites
 
 
 def action_sequences_to_clusters(actions, mentions):
@@ -130,36 +145,22 @@ def action_sequences_to_clusters(actions, mentions):
     return clusters
 
 
-def check_clusters_are_same_or_not(cluster_list1, cluster_list2):
-    def get_ordered_cluster(cluster_list):
-        first_mention_to_whole_cluster = {}
-        for cluster in cluster_list:
-            sorted_mentions = sorted(cluster, key=lambda x: x[0] + x[1] * 1e-5)
-            first_mention_to_whole_cluster[tuple(sorted_mentions[0])] = sorted_mentions
-        return first_mention_to_whole_cluster
-
-    ord_cluster1 = get_ordered_cluster(cluster_list1)
-    ord_cluster2 = get_ordered_cluster(cluster_list2)
-
-    for mention, cluster in ord_cluster1.items():
-        if mention not in ord_cluster2:
-            return False
-        else:
-            if ord_cluster1[mention] != ord_cluster2[mention]:
-                return False
-
-    return True
-
-
-def get_mention_to_action_partition(split, seg_len, input_dir, output_dir):
+def get_mention_to_action_partition(split, seg_len, input_dir, output_dir, num_cells):
     input_file = path.join(input_dir, "{}.{}.jsonlines".format(split, seg_len))
     output_file = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
 
     data = load_jsonl(input_file)
+    total_overwrites = 0
+    non_optimal_overwrites = 0
+
     with open(output_file, 'w') as f:
         for doc in data:
             clusters = doc["clusters"]
-            actions = get_actions(clusters, num_cells=num_cells)
+            actions, doc_non_optimal_overwrites, doc_total_overwrites = get_actions(
+                clusters, num_cells=num_cells)
+            total_overwrites += doc_total_overwrites
+            non_optimal_overwrites += doc_non_optimal_overwrites
+
             ord_mentions = get_ordered_mentions(clusters)
             pred_clusters = action_sequences_to_clusters(actions, ord_mentions)
             mention_to_cluster = get_mention_to_cluster(clusters)
@@ -169,6 +170,8 @@ def get_mention_to_action_partition(split, seg_len, input_dir, output_dir):
             doc['ord_mentions'] = ord_mentions
             doc['cluster_ids'] = [mention_to_cluster[tuple(mention)] for mention in ord_mentions]
             f.write(json.dumps(doc) + "\n")
+        print('Fraction of non-optimal overwrites: %.2f, # of cells: %d'
+              % (100 * non_optimal_overwrites / total_overwrites, num_cells))
 
 
 def get_mention_to_action(cross_val_split, num_cells, seg_len, input_dir, output_dir):
@@ -180,12 +183,12 @@ def get_mention_to_action(cross_val_split, num_cells, seg_len, input_dir, output
 
     for split in ["dev", "train", "test"]:
         get_mention_to_action_partition(
-            split, seg_len, cross_val_input_dir, cell_dir)
+            split, seg_len, cross_val_input_dir, cell_dir, num_cells)
 
 
 if __name__ == "__main__":
     input_dir = "/home/shtoshni/Research/litbank_coref/data/segmentation"
-    output_dir = "/data/autoregressive/fixed_mem"
+    output_dir = "/home/shtoshni/Research/litbank_coref/data/autoregressive/lru"
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
