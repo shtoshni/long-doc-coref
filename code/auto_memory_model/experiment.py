@@ -19,6 +19,7 @@ from auto_memory_model.controller.lfm_controller import LearnedFixedMemControlle
 from auto_memory_model.controller.lru_controller import LRUController
 
 EPS = 1e-8
+NUM_STUCK_EPOCHS = 10
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
@@ -86,6 +87,7 @@ class Experiment:
         self.train_info['epoch'] = 0
         self.train_info['val_perf'] = 0.0
         self.train_info['global_steps'] = 0
+        self.train_info['num_stuck_epochs'] = 0
 
         if not path.exists(self.model_path):
             torch.manual_seed(self.seed)
@@ -103,6 +105,9 @@ class Experiment:
         scheduler = self.optim_scheduler
         if not self.slurm_id:
             writer = self.writer
+
+        if self.train_info['num_stuck_epochs'] >= NUM_STUCK_EPOCHS:
+            return
 
         for epoch in range(epochs_done, max_epochs):
             print("\n\nStart Epoch %d" % (epoch + 1))
@@ -153,8 +158,12 @@ class Experiment:
             # Save model
             self.save_model(self.model_path)
 
+            # Assume that the model didn't improve
+            self.train_info['num_stuck_epochs'] += 1
+
             # Update model if dev performance improves
             if fscore > self.train_info['val_perf']:
+                self.train_info['num_stuck_epochs'] = 0
                 self.train_info['val_perf'] = fscore
                 logging.info('Saving best model')
                 self.save_model(self.best_model_path)
@@ -168,6 +177,9 @@ class Experiment:
             sys.stdout.flush()
             if not self.slurm_id:
                 self.writer.flush()
+
+            if self.train_info['num_stuck_epochs'] >= NUM_STUCK_EPOCHS:
+                return
 
     def eval_auto_reg(self):
         """Train model"""
