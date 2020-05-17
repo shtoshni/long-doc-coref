@@ -5,7 +5,7 @@ lrec2020-coref/*
 conda_env/*
 resources/*
 litbank/*
-**/__pycache__
+__pycache__/
 *.out
 data/*
 .idea/*
