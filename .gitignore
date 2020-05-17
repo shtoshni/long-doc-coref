@@ -1,7 +1,7 @@
 models/*
 litbank_html/*
 figs/*
-lrec2020-coref/*
+lrec2020-coref/
 conda_env/*
 resources/*
 litbank/*
