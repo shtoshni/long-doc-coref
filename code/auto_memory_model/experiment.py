@@ -143,7 +143,7 @@ class Experiment:
                 optimizer.step()
 
                 if self.train_info['global_steps'] % 10 == 0:
-                    print(example["doc_key"], total_loss.item())
+                    print(example["doc_key"], '{:.3f}'.format(total_loss.item()))
 
             logging.info(errors)
             # Update epochs done

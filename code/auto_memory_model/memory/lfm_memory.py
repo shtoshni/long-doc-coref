@@ -24,6 +24,7 @@ class LearnedFixedMemory(BaseFixedMemory):
 
         fert_score = torch.cat([mem_fert_scores, ment_fert_score], dim=0)
         overwrite_ign_mask = self.get_overwrite_ign_mask(ent_counter)
+        # print(overwrite_ign_mask)
         overwrite_ign_scores = fert_score * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
         overwrite_ign_log_prob = torch.nn.functional.log_softmax(overwrite_ign_scores, dim=0)
 
