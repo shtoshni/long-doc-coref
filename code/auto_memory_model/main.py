@@ -52,7 +52,7 @@ def main():
                         help="Number of memory cells.")
     parser.add_argument('-mem_size', default=None, type=int,
                         help='Memory size used in the model')
-    parser.add_argument('-mlp_size', default=1000, type=int,
+    parser.add_argument('-mlp_size', default=1024, type=int,
                         help='MLP size used in the model')
     parser.add_argument('-mlp_depth', default=1, type=int,
                         help='Number of hidden layers')
@@ -68,7 +68,7 @@ def main():
     parser.add_argument('--batch_size', '-bsize',
                         help='Batch size', default=1, type=int)
     parser.add_argument('-over_loss_wt', help='Weight of overwrite loss',
-                        default=0.01, type=float)
+                        default=0.1, type=float)
     parser.add_argument('-max_span_length', default=10,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-feedback', default=False, action='store_true',

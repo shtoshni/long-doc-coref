@@ -9,3 +9,4 @@ __pycache__/
 *.out
 data/*
 .idea/*
+*.txt
