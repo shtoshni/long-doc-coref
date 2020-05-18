@@ -17,6 +17,7 @@ from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
 from auto_memory_model.controller.lfm_controller import LearnedFixedMemController
 from auto_memory_model.controller.lru_controller import LRUController
+from auto_memory_model.controller.um_controller import UnboundedMemController
 
 EPS = 1e-8
 NUM_STUCK_EPOCHS = 10
@@ -66,6 +67,8 @@ class Experiment:
             self.model = LearnedFixedMemController(**kwargs).cuda()
         elif mem_type == 'lru':
             self.model = LRUController(**kwargs).cuda()
+        elif mem_type == 'unbounded':
+            self.model = UnboundedMemController(**kwargs).cuda()
         self.initialize_setup(init_lr=init_lr)
         utils.print_model_info(self.model)
 

@@ -185,7 +185,7 @@ def get_mention_to_action(cross_val_split, num_cells, seg_len, input_dir, output
 
 if __name__ == "__main__":
     input_dir = "/home/shtoshni/Research/litbank_coref/data/segmentation"
-    output_dir = "/data/autoregressive/fixed_mem"
+    output_dir = "/home/shtoshni/Research/litbank_coref/data/autoregressive/fixed_mem"
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 

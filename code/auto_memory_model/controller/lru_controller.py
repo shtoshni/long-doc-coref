@@ -16,7 +16,7 @@ class LRUController(LearnedFixedMemController):
         # Set loss functions
         # Overwrite in LRU has only 2 classes - Overwrite (LRU cell) and Ignore
         over_loss_wts = torch.ones(2).cuda()
-        self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum')
+        self.loss_fn['over'] = nn.NLLLoss(weight=over_loss_wts, reduction='sum')
 
     @staticmethod
     def over_ign_tuple_to_idx(action_tuple_list, over_ign_prob_list):

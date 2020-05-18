@@ -1,4 +1,4 @@
 #!/bin/bash
 #SBATCH --exclude=gpu-g38
-#SBATCH --partition=speech-gpu --cpus-per-task=1 --array=1-24 --job-name=auto_mem -o auto_mem-%A_%a.out
+#SBATCH --partition=speech-gpu --cpus-per-task=1 --array=1-48 --job-name=auto_mem -o auto_mem-%A_%a.out
 bash -c "`sed "${SLURM_ARRAY_TASK_ID}q;d" batch-commands-last.txt`"

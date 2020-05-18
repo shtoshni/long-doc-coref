@@ -45,7 +45,8 @@ def main():
                         type=str, help='If true use an RNN on top of mention embeddings.')
 
     # Memory variables
-    parser.add_argument('-mem_type', default='fixed_mem', choices=['fixed_mem', 'lru'],
+    parser.add_argument('-mem_type', default='fixed_mem',
+                        choices=['fixed_mem', 'lru', 'unbounded'],
                         help="Memory type.")
     parser.add_argument('-num_cells', default=20, type=int,
                         help="Number of memory cells.")
@@ -115,8 +116,14 @@ def main():
     if not path.exists(best_model_dir):
         os.makedirs(best_model_dir)
 
-    args.data_dir = path.join(
-        args.base_data_dir, f'autoregressive/{args.mem_type}/{args.cross_val_split}/{args.num_cells}')
+    if args.mem_type in ['fixed_mem', 'lru']:
+        args.data_dir = path.join(
+            args.base_data_dir, f'autoregressive/{args.mem_type}/{args.cross_val_split}/{args.num_cells}')
+    elif args.mem_type == 'unbounded':
+        args.data_dir = path.join(
+            args.base_data_dir, f'autoregressive/{args.mem_type}/{args.cross_val_split}')
+    else:
+        raise NotImplementedError
     # print(args.data_dir)
     args.conll_data_dir = path.join(
         args.base_data_dir, "litbank_tenfold_splits/{}".format(args.cross_val_split))

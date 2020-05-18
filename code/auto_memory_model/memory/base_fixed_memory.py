@@ -25,11 +25,6 @@ class BaseFixedMemory(BaseMemory):
         last_mention_idx = [0 for _ in range(self.num_cells)]
         return mem, ent_counter, last_mention_idx
 
-    @staticmethod
-    def get_coref_mask(ent_counter):
-        cell_mask = (ent_counter > 0.0).float().cuda()
-        return cell_mask
-
     def get_overwrite_ign_mask(self, ent_counter):
         last_unused_cell = None
         for cell_idx, cell_count in enumerate(ent_counter.tolist()):

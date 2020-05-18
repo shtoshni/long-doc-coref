@@ -103,6 +103,11 @@ class BaseMemory(nn.Module):
         action_emb = self.action_str_to_idx[action_str]
         return self.last_action_emb(torch.tensor(action_emb).cuda())
 
+    @staticmethod
+    def get_coref_mask(ent_counter):
+        cell_mask = (ent_counter > 0.0).float().cuda()
+        return cell_mask
+
     def get_coref_new_log_prob(self, query_vector, mem_vectors, last_ment_vectors,
                                ent_counter, distance_embs, counter_embs):
         # Repeat the query vector for comparison against all cells

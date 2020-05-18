@@ -5,7 +5,7 @@ import os
 import subprocess
 
 mlp_size_list = ['-mlp_size ' + str(mlp_size) for mlp_size in [1000]]
-mlp_depth_list = ['-mlp_depth ' + str(mlp_depth) for mlp_depth in [1]]
+mlp_depth_list = ['-mlp_depth ' + str(mlp_depth) for mlp_depth in [1, 2]]
 dropout_list = ['-dropout_rate ' + str(dropout_rate) for dropout_rate in [0.5]]
 num_cell_list = ['-num_cells ' + str(num_cells) for num_cells in [5, 10, 20, 50]]
 model_loc_list = ['-model_loc /share/data/speech/shtoshni/resources']
