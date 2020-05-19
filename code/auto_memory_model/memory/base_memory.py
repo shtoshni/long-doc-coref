@@ -4,7 +4,7 @@ from pytorch_utils.modules import MLP
 
 
 class BaseMemory(nn.Module):
-    def __init__(self, hsize=300, mlp_size=200, mlp_depth=1,
+    def __init__(self, hsize=300, mlp_size=200, mlp_depth=1, coref_mlp_depth=1,
                  mem_size=None, drop_module=None, emb_size=20, entity_rep='max',
                  use_last_mention=False,
                  **kwargs):
@@ -37,7 +37,7 @@ class BaseMemory(nn.Module):
         self.query_projector = nn.Linear(self.hsize + 2 * self.emb_size, self.mem_size)
 
         self.mem_coref_mlp = MLP(3 * self.mem_size + 2 * self.emb_size, self.mlp_size, 1,
-                                 num_layers=mlp_depth, bias=True, drop_module=drop_module)
+                                 num_layers=coref_mlp_depth, bias=True, drop_module=drop_module)
         if self.use_last_mention:
             self.ment_coref_mlp = MLP(3 * self.mem_size, self.mlp_size, 1,
                                       num_layers=mlp_depth, bias=True, drop_module=drop_module)
@@ -132,7 +132,7 @@ class BaseMemory(nn.Module):
 
         coref_new_scores = coref_new_scores * coref_new_mask + (1 - coref_new_mask) * (-1e4)
         coref_new_log_prob = torch.nn.functional.log_softmax(coref_new_scores, dim=0)
-        return coref_new_log_prob
+        return coref_new_scores, coref_new_log_prob
 
     def forward(self, mention_emb_list, actions, mentions, teacher_forcing=False):
         pass

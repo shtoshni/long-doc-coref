@@ -21,9 +21,9 @@ class LearnedFixedMemController(BaseController):
         # Set loss functions
         self.loss_fn = {}
         coref_loss_wts = torch.ones(self.num_cells + 1).cuda()
-        self.loss_fn['coref'] = nn.NLLLoss(weight=coref_loss_wts, reduction='sum')
+        self.loss_fn['coref'] = nn.CrossEntropyLoss(weight=coref_loss_wts, reduction='sum')
         over_loss_wts = torch.ones(self.num_cells + 1).cuda()
-        self.loss_fn['over'] = nn.NLLLoss(weight=over_loss_wts, reduction='sum')
+        self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum')
 
     def over_ign_tuple_to_idx(self, action_tuple_list, over_ign_prob_list):
         action_indices = []

@@ -4,23 +4,22 @@ from os import path
 import os
 import subprocess
 
-mem_type_list = ['-mem_type ' + mem_type for mem_type in ['lru', 'fixed_mem', 'unbounded']]
+mem_type_list = ['-mem_type ' + mem_type for mem_type in ['fixed_mem']]
 cross_val_split_list = ['-cross_val_split ' + str(cross_val_split) for cross_val_split in range(1)]
-mlp_size_list = ['-mlp_size ' + str(mlp_size) for mlp_size in [1024]]
-mlp_depth_list = ['-mlp_depth ' + str(mlp_depth) for mlp_depth in [1, 2]]
-dropout_list = ['-dropout_rate ' + str(dropout_rate) for dropout_rate in [0.5]]
+mlp_size_list = ['-mlp_size ' + str(mlp_size) for mlp_size in [1024, 2048, 3072]]
+mlp_depth_list = ['-mlp_depth ' + str(mlp_depth) for mlp_depth in [1]]
+dropout_list = ['-dropout_rate ' + str(dropout_rate) for dropout_rate in [0.3, 0.5]]
 model_loc_list = ['-model_loc /share/data/speech/shtoshni/resources']
 max_segment_list = ['-max_segment_len ' + str(max_segment_len) for max_segment_len in [512]]
 lr_list = ['-init_lr ' + str(lr) for lr in [5e-4]]
 seed = ['-seed 2']
 
-
-num_cell_list = ['-num_cells ' + str(num_cells) for num_cells in [5, 10, 20, 50]]
+num_cell_list = ['-num_cells ' + str(num_cells) for num_cells in [20, 50]]
 over_loss_wt_list = ['-over_loss_wt ' + str(over_loss_wt) for over_loss_wt in [0.01, 0.1, 1.0]]
 
 JOB_NAME = 'auto_mem'
 
-out_dir = path.join(os.getcwd(), 'outputs/mem_type')
+out_dir = path.join(os.getcwd(), 'outputs/fixed_mem')
 if not path.isdir(out_dir):
     os.makedirs(out_dir)
 

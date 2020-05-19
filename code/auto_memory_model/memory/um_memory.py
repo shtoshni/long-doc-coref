@@ -18,11 +18,11 @@ class UnboundedMemory(BaseMemory):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
         counter_embs = self.get_counter_emb(ent_counter)
 
-        coref_new_log_prob = self.get_coref_new_log_prob(
+        coref_new_scores, coref_new_log_prob = self.get_coref_new_log_prob(
             query_vector, mem_vectors, last_ment_vectors,
             ent_counter, distance_embs, counter_embs)
 
-        return coref_new_log_prob
+        return coref_new_scores
 
     def forward(self, mention_emb_list, actions, mentions,
                 teacher_forcing=False):
@@ -45,11 +45,11 @@ class UnboundedMemory(BaseMemory):
             query_vector = self.query_projector(
                 torch.cat([ment_emb, last_action_emb, width_embedding], dim=0))
 
-            coref_new_log_prob = self.predict_action(
+            coref_new_scores = self.predict_action(
                 query_vector, mem_vectors, last_ment_vectors,
                 ment_idx, ent_counter, last_mention_idx)
 
-            action_logit_list.append(coref_new_log_prob)
+            action_logit_list.append(coref_new_scores)
 
             if ment_idx == 0:
                 # We start with a single empty memory cell
@@ -60,8 +60,8 @@ class UnboundedMemory(BaseMemory):
 
                 action_list.append((0, 'o'))
             else:
-                pred_max_idx = torch.argmax(coref_new_log_prob).item()
-                num_ents = coref_new_log_prob.shape[0] - 1
+                pred_max_idx = torch.argmax(coref_new_scores).item()
+                num_ents = coref_new_scores.shape[0] - 1
 
                 if pred_max_idx == num_ents:
                     pred_action_str = 'o'

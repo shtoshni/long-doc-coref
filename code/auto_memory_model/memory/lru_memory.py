@@ -11,18 +11,26 @@ class LRUMemory(BaseFixedMemory):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
         counter_embs = self.get_counter_emb(ent_counter)
 
-        coref_new_log_prob = self.get_coref_new_log_prob(
+        coref_new_scores, coref_new_log_prob = self.get_coref_new_log_prob(
             query_vector, mem_vectors, last_ment_vectors,
             ent_counter, distance_embs, counter_embs)
 
         # Overwrite vs Ignore
-        ment_fert_score = self.ment_fert_mlp(query_vector)
         lru_cell = lru_list[0]
         mem_fert_input = torch.cat([mem_vectors[lru_cell, :], distance_embs[lru_cell, :],
                                     counter_embs[lru_cell, :]], dim=0)
-        mem_fert_score = self.mem_fert_mlp(mem_fert_input)
-        over_ign_logit = torch.cat([mem_fert_score, ment_fert_score], dim=0)
-        return coref_new_log_prob, over_ign_logit
+        # ment_fert_score = self.ment_fert_mlp(query_vector)
+        # mem_fert_score = self.mem_fert_mlp(mem_fert_input)
+        # over_ign_score = torch.cat([mem_fert_score, ment_fert_score], dim=0)
+
+        ment_distance_emb = torch.squeeze(self.distance_embeddings(torch.tensor([0]).cuda()), dim=0)
+        ment_counter_emb = torch.squeeze(self.counter_embeddings(torch.tensor([0]).cuda()), dim=0)
+        ment_fert_input = torch.cat([query_vector, ment_distance_emb, ment_counter_emb], dim=0)
+
+        fert_input = torch.stack([mem_fert_input, ment_fert_input], dim=0)
+        over_ign_score = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
+
+        return coref_new_scores, over_ign_score
 
     def forward(self, mention_emb_list, actions, mentions, teacher_forcing=False):
         # Initialize memory
@@ -47,16 +55,16 @@ class LRUMemory(BaseFixedMemory):
             query_vector = self.query_projector(
                 torch.cat([ment_emb, last_action_emb, width_embedding], dim=0))
 
-            coref_new_logit, over_ign_logit = self.predict_action(
+            coref_new_scores, over_ign_score = self.predict_action(
                 query_vector, mem_vectors, last_ment_vectors,
                 ment_idx, ent_counter, last_mention_idx, lru_list)
 
-            coref_new_max_idx = torch.argmax(coref_new_logit).item()
+            coref_new_max_idx = torch.argmax(coref_new_scores).item()
             if coref_new_max_idx < self.num_cells:
                 pred_action_str = 'c'
                 pred_cell_idx = coref_new_max_idx
             else:
-                over_ign_max_idx = torch.argmax(over_ign_logit).item()
+                over_ign_max_idx = torch.argmax(over_ign_score).item()
                 if over_ign_max_idx == 0:
                     pred_action_str = 'o'
                     pred_cell_idx = lru_list[0]
@@ -66,7 +74,7 @@ class LRUMemory(BaseFixedMemory):
 
             # During training this records the next actions  - during testing it records the
             # predicted sequence of actions
-            action_logit_list.append((coref_new_logit, over_ign_logit))
+            action_logit_list.append((coref_new_scores, over_ign_score))
             action_list.append((pred_cell_idx, pred_action_str))
 
             if self.training or teacher_forcing:

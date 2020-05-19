@@ -11,27 +11,29 @@ class LearnedFixedMemory(BaseFixedMemory):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
         counter_embs = self.get_counter_emb(ent_counter)
 
-        coref_new_log_prob = self.get_coref_new_log_prob(
+        coref_new_scores, coref_new_log_prob = self.get_coref_new_log_prob(
             query_vector, mem_vectors, last_ment_vectors,
             ent_counter, distance_embs, counter_embs)
         # Fertility Score
-        # Memory fertility scores
-        mem_fert_scores = self.mem_fert_mlp(
-            torch.cat([mem_vectors, distance_embs, counter_embs], dim=-1))
-        mem_fert_scores = torch.squeeze(mem_fert_scores, dim=-1)
-        # Mention fertility score
-        ment_fert_score = self.ment_fert_mlp(query_vector)
+        # Memory + Mention fertility input
+        mem_fert_input = torch.cat([mem_vectors, distance_embs, counter_embs], dim=-1)
+        # Mention fertility input
+        ment_distance_emb = torch.squeeze(self.distance_embeddings(torch.tensor([0]).cuda()), dim=0)
+        ment_counter_emb = torch.squeeze(self.counter_embeddings(torch.tensor([0]).cuda()), dim=0)
+        ment_fert_input = torch.unsqueeze(
+            torch.cat([query_vector, ment_distance_emb, ment_counter_emb], dim=0), dim=0)
+        # Fertility scores
+        fert_input = torch.cat([mem_fert_input, ment_fert_input], dim=0)
+        fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
 
-        fert_score = torch.cat([mem_fert_scores, ment_fert_score], dim=0)
         overwrite_ign_mask = self.get_overwrite_ign_mask(ent_counter)
-        # print(overwrite_ign_mask)
-        overwrite_ign_scores = fert_score * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
+        overwrite_ign_scores = fert_scores * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
         overwrite_ign_log_prob = torch.nn.functional.log_softmax(overwrite_ign_scores, dim=0)
 
         norm_overwrite_ign_log_prob = (coref_new_log_prob[self.num_cells] + overwrite_ign_log_prob)
         all_log_prob = torch.cat([coref_new_log_prob[:self.num_cells],
                                   norm_overwrite_ign_log_prob], dim=0)
-        return all_log_prob, coref_new_log_prob, overwrite_ign_log_prob
+        return all_log_prob, coref_new_scores, overwrite_ign_scores
 
     def forward(self, mention_emb_list, actions, mentions,
                 teacher_forcing=False):
@@ -54,11 +56,11 @@ class LearnedFixedMemory(BaseFixedMemory):
             query_vector = self.query_projector(
                 torch.cat([ment_emb, last_action_emb, width_embedding], dim=0))
 
-            all_log_probs, coref_new_log_prob, overwrite_ign_log_prob = self.predict_action(
+            all_log_probs, coref_new_scores, overwrite_ign_scores = self.predict_action(
                 query_vector, mem_vectors, last_ment_vectors,
                 ment_idx, ent_counter, last_mention_idx)
 
-            action_logit_list.append((coref_new_log_prob, overwrite_ign_log_prob))
+            action_logit_list.append((coref_new_scores, overwrite_ign_scores))
 
             pred_max_idx = torch.argmax(all_log_probs).item()
             pred_cell_idx = pred_max_idx % self.num_cells

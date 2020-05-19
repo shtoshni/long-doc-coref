@@ -54,8 +54,10 @@ def main():
                         help='Memory size used in the model')
     parser.add_argument('-mlp_size', default=1024, type=int,
                         help='MLP size used in the model')
+    parser.add_argument('-coref_mlp_depth', default=1, type=int,
+                        help='Number of hidden layers in Coref MLP')
     parser.add_argument('-mlp_depth', default=1, type=int,
-                        help='Number of hidden layers')
+                        help='Number of hidden layers in other MLPs')
     parser.add_argument('-entity_rep', default='avg', type=str,
                         choices=['lstm', 'gru', 'max', 'avg'],
                         help='Entity representation.')
@@ -95,7 +97,7 @@ def main():
     # Only include important options in hash computation
     imp_opts = ['model', 'max_segment_len', 'use_doc_rnn',  'ment_emb',  # Encoder params
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
-                'emb_size', 'use_last_mention',  # Memory params
+                'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
                 'feedback', 'cross_val_split', 'over_loss_wt',  # Training params
                 ]

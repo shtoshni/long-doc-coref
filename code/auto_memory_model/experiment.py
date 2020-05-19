@@ -20,7 +20,7 @@ from auto_memory_model.controller.lru_controller import LRUController
 from auto_memory_model.controller.um_controller import UnboundedMemController
 
 EPS = 1e-8
-NUM_STUCK_EPOCHS = 10
+NUM_STUCK_EPOCHS = 15
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
@@ -71,6 +71,7 @@ class Experiment:
             self.model = UnboundedMemController(**kwargs).cuda()
         self.initialize_setup(init_lr=init_lr)
         utils.print_model_info(self.model)
+        sys.stdout.flush()
 
         if not eval:
             self.train(max_epochs=max_epochs,

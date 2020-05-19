@@ -35,7 +35,7 @@ class UnboundedMemController(BaseController):
             logit_tens = torch.unsqueeze(action_prob_list[idx], dim=0)
 
             # print(target, logit_tens.shape)
-            coref_loss += torch.nn.functional.nll_loss(input=logit_tens, target=target)
+            coref_loss += torch.nn.functional.cross_entropy(input=logit_tens, target=target)
 
         return coref_loss
 
