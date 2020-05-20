@@ -41,8 +41,7 @@ class LRUController(LearnedFixedMemController):
         """
         Encode a batch of excerpts.
         """
-        doc_tens, sent_len_list = self.tensorize_example(example)
-        encoded_output = self.encode_doc(doc_tens,  sent_len_list)
+        encoded_output = self.doc_encoder(example)
 
         mention_embs = self.get_mention_embeddings(
             example['ord_mentions'], encoded_output, method=self.ment_emb)

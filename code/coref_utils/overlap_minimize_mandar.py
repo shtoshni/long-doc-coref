@@ -122,7 +122,7 @@ def split_into_segments(document_state, max_segment_len, constraints1, constrain
         subtoken_map = document_state.subtoken_map[current: end + 1]
         document_state.segment_subtoken_map.append(subtoken_map)
         info = document_state.info[current: end + 1]
-        document_state.segment_info.append([None] + info + [None])
+        document_state.segment_info.append(info)
         current = end + 1
         previous_token = subtoken_map[-1]
 

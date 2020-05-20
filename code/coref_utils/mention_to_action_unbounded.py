@@ -3,6 +3,7 @@ import json
 from collections import defaultdict, OrderedDict
 from os import path
 import numpy as np
+import sys
 
 
 def load_jsonl(file_path):
@@ -114,8 +115,8 @@ def get_mention_to_action(cross_val_split, seg_len, input_dir, output_dir):
 
 
 if __name__ == "__main__":
-    input_dir = "/home/shtoshni/Research/litbank_coref/data/segmentation"
-    output_dir = "/home/shtoshni/Research/litbank_coref/data/autoregressive/unbounded"
+    input_dir = sys.argv[1]
+    output_dir = sys.argv[2]
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 

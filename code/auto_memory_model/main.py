@@ -29,12 +29,12 @@ def main():
 
     parser.add_argument('-model', default='base', type=str,
                         help='BERT model type')
+    parser.add_argument('-doc_enc', default='independent', type=str,
+                        choices=['independent', 'overlap'], help='BERT model type')
     parser.add_argument('-model_loc', default=None, type=str,
                         help='SpanBERT model location')
     parser.add_argument('-max_segment_len', default=512, type=int,
                         help='Max segment length of BERT segments.')
-    parser.add_argument('-cross_val_split', default=0, type=int,
-                        help='Cross validation split to be used.')
 
     # Encoder variables
     # parser.add_argument('-hsize', default=400, type=int,
@@ -67,6 +67,8 @@ def main():
                         help="Use last mention along with the global features if True.")
 
     # Training params
+    parser.add_argument('-cross_val_split', default=0, type=int,
+                        help='Cross validation split to be used.')
     parser.add_argument('--batch_size', '-bsize',
                         help='Batch size', default=1, type=int)
     parser.add_argument('-new_ent_wt', help='Weight of new entity term in coref loss',
@@ -80,7 +82,7 @@ def main():
     parser.add_argument('-dropout_rate', default=0.5, type=float,
                         help='Dropout rate')
     parser.add_argument('-max_epochs',
-                        help='Maximum number of epochs', default=40, type=int)
+                        help='Maximum number of epochs', default=30, type=int)
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
@@ -97,7 +99,7 @@ def main():
     # Get model directory name
     opt_dict = OrderedDict()
     # Only include important options in hash computation
-    imp_opts = ['model', 'max_segment_len', 'use_doc_rnn',  'ment_emb',  # Encoder params
+    imp_opts = ['model', 'max_segment_len', 'use_doc_rnn',  'ment_emb', "doc_enc",  # Encoder params
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
                 'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
@@ -122,10 +124,11 @@ def main():
 
     if args.mem_type in ['fixed_mem', 'lru']:
         args.data_dir = path.join(
-            args.base_data_dir, f'autoregressive/{args.mem_type}/{args.cross_val_split}/{args.num_cells}')
+            args.base_data_dir,
+            f'autoregressive/{args.doc_enc}/{args.mem_type}/{args.cross_val_split}/{args.num_cells}')
     elif args.mem_type == 'unbounded':
         args.data_dir = path.join(
-            args.base_data_dir, f'autoregressive/{args.mem_type}/{args.cross_val_split}')
+            args.base_data_dir, f'autoregressive/{args.doc_enc}/{args.mem_type}/{args.cross_val_split}')
     else:
         raise NotImplementedError
     # print(args.data_dir)
