@@ -4,23 +4,24 @@ from os import path
 import os
 import subprocess
 
-mem_type_list = ['-mem_type ' + mem_type for mem_type in ['fixed_mem']]
+mem_type_list = ['-mem_type ' + mem_type for mem_type in ['fixed_mem', 'lru', 'unbounded']]
+new_ent_wt_list = ['-new_ent_wt ' + str(new_ent_wt) for new_ent_wt in [1, 2, 5]]
 cross_val_split_list = ['-cross_val_split ' + str(cross_val_split) for cross_val_split in range(1)]
-mlp_size_list = ['-mlp_size ' + str(mlp_size) for mlp_size in [1024, 2048, 3072]]
-coref_mlp_depth_list = ['-coref_mlp_depth ' + str(mlp_depth) for mlp_depth in [1, 2]]
+mlp_size_list = ['-mlp_size ' + str(mlp_size) for mlp_size in [1024]]
+coref_mlp_depth_list = ['-coref_mlp_depth ' + str(mlp_depth) for mlp_depth in [2]]
 mlp_depth_list = ['-mlp_depth ' + str(mlp_depth) for mlp_depth in [1]]
-dropout_list = ['-dropout_rate ' + str(dropout_rate) for dropout_rate in [0.3, 0.5]]
+dropout_list = ['-dropout_rate ' + str(dropout_rate) for dropout_rate in [0.5]]
 model_loc_list = ['-model_loc /share/data/speech/shtoshni/resources']
 max_segment_list = ['-max_segment_len ' + str(max_segment_len) for max_segment_len in [512]]
 lr_list = ['-init_lr ' + str(lr) for lr in [5e-4]]
 seed = ['-seed 3']
 
-num_cell_list = ['-num_cells ' + str(num_cells) for num_cells in [50]]
-over_loss_wt_list = ['-over_loss_wt ' + str(over_loss_wt) for over_loss_wt in [0.01, 0.1, 1.0]]
+num_cell_list = ['-num_cells ' + str(num_cells) for num_cells in [5, 10, 20, 50]]
+over_loss_wt_list = ['-over_loss_wt ' + str(over_loss_wt) for over_loss_wt in [0.1]]
 
-JOB_NAME = 'fixed_mem'
+JOB_NAME = 'new_ent'
 
-out_dir = path.join(os.getcwd(), 'outputs/fixed_mem')
+out_dir = path.join(os.getcwd(), 'outputs/new_ent')
 if not path.isdir(out_dir):
     os.makedirs(out_dir)
 
@@ -29,7 +30,7 @@ out_file = path.join(out_dir, 'commands.txt')
 base_dir = "/share/data/speech/shtoshni/research/litbank_coref"
 
 common_options = [mlp_size_list, mlp_depth_list, coref_mlp_depth_list,
-                  dropout_list, model_loc_list,
+                  new_ent_wt_list, dropout_list, model_loc_list,
                   max_segment_list, lr_list, seed, cross_val_split_list]
 fixed_mem_options = [num_cell_list, over_loss_wt_list]
 with open(out_file, 'w') as out_f:

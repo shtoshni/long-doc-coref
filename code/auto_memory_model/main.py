@@ -69,6 +69,8 @@ def main():
     # Training params
     parser.add_argument('--batch_size', '-bsize',
                         help='Batch size', default=1, type=int)
+    parser.add_argument('-new_ent_wt', help='Weight of new entity term in coref loss',
+                        default=1.0, type=float)
     parser.add_argument('-over_loss_wt', help='Weight of overwrite loss',
                         default=0.1, type=float)
     parser.add_argument('-max_span_length', default=10,
@@ -99,7 +101,7 @@ def main():
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
                 'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
-                'feedback', 'cross_val_split', 'over_loss_wt',  # Training params
+                'feedback', 'cross_val_split', 'over_loss_wt',  "new_ent_wt",  # Training params
                 ]
     for key, val in vars(args).items():
         if key in imp_opts:

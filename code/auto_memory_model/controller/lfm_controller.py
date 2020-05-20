@@ -10,17 +10,18 @@ EPS = 1e-8
 
 
 class LearnedFixedMemController(BaseController):
-    def __init__(self, num_cells=10, over_loss_wt=0.1, **kwargs):
+    def __init__(self, num_cells=10, over_loss_wt=0.1, new_ent_wt=1.0, **kwargs):
         super(LearnedFixedMemController, self).__init__(**kwargs)
         self.memory_net = LearnedFixedMemory(
             num_cells=num_cells, hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize,
             drop_module=self.drop_module, **kwargs)
         self.num_cells = num_cells
         # Loss setup
+        self.new_ent_wt = new_ent_wt
         self.over_loss_wt = over_loss_wt
         # Set loss functions
         self.loss_fn = {}
-        coref_loss_wts = torch.ones(self.num_cells + 1).cuda()
+        coref_loss_wts = torch.tensor([1.0] * self.num_cells + [self.new_ent_wt]).cuda()
         self.loss_fn['coref'] = nn.CrossEntropyLoss(weight=coref_loss_wts, reduction='sum')
         over_loss_wts = torch.ones(self.num_cells + 1).cuda()
         self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum')

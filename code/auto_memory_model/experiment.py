@@ -20,7 +20,7 @@ from auto_memory_model.controller.lru_controller import LRUController
 from auto_memory_model.controller.um_controller import UnboundedMemController
 
 EPS = 1e-8
-NUM_STUCK_EPOCHS = 15
+NUM_STUCK_EPOCHS = 10
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
@@ -149,6 +149,7 @@ class Experiment:
                 if self.train_info['global_steps'] % 10 == 0:
                     print(example["doc_key"], '{:.3f}'.format(total_loss.item()))
 
+            sys.stdout.flush()
             logging.info(errors)
             # Update epochs done
             self.train_info['epoch'] = epoch + 1

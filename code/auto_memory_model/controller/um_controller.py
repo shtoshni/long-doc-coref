@@ -6,16 +6,16 @@ from auto_memory_model.controller.base_controller import BaseController
 
 
 class UnboundedMemController(BaseController):
-    def __init__(self, **kwargs):
+    def __init__(self, new_ent_wt=1.0, **kwargs):
         super(UnboundedMemController, self).__init__(**kwargs)
+        self.new_ent_wt = new_ent_wt
         self.memory_net = UnboundedMemory(
             hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize,
             drop_module=self.drop_module, **kwargs)
         # Set loss functions
         self.loss_fn = {}
 
-    @staticmethod
-    def calculate_coref_loss(action_prob_list, action_tuple_list):
+    def calculate_coref_loss(self, action_prob_list, action_tuple_list):
         num_cells = 1
         coref_loss = 0.0
 
@@ -35,7 +35,9 @@ class UnboundedMemController(BaseController):
             logit_tens = torch.unsqueeze(action_prob_list[idx], dim=0)
 
             # print(target, logit_tens.shape)
-            coref_loss += torch.nn.functional.cross_entropy(input=logit_tens, target=target)
+            weight = torch.ones_like(action_prob_list[idx]).float().cuda()
+            weight[-1] = self.new_ent_wt
+            coref_loss += torch.nn.functional.cross_entropy(input=logit_tens, target=target, weight=weight)
 
         return coref_loss
 
