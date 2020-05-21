@@ -29,7 +29,7 @@ class Experiment:
                  model_dir=None, best_model_dir=None,
                  # Model params
                  batch_size=32, seed=0, init_lr=1e-3, max_gradient_norm=5.0,
-                 max_epochs=20, max_segment_len=128, eval=False, feedback=False,
+                 max_epochs=20, max_segment_len=128, eval=False, num_train_docs=80,
                  mem_type=False,
                  no_singletons=False,
                  # Other params
@@ -40,8 +40,8 @@ class Experiment:
         # Prepare data info
         self.train_examples, self.dev_examples, self.test_examples \
             = load_litbank_data(data_dir, max_segment_len)
-        if feedback:
-            self.train_examples = self.train_examples[:20]
+        # if feedback:
+        self.train_examples = self.train_examples[:num_train_docs]
 
         self.data_iter_map = {"train": self.train_examples,
                               "dev": self.dev_examples,

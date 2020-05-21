@@ -77,8 +77,8 @@ def main():
                         default=0.1, type=float)
     parser.add_argument('-max_span_length', default=10,
                         help='Random seed to get different runs', type=int)
-    parser.add_argument('-feedback', default=False, action='store_true',
-                        help='When true, do training on less data.')
+    parser.add_argument('-num_train_docs', default=80, type=int,
+                        help='Number of training docs.')
     parser.add_argument('-dropout_rate', default=0.5, type=float,
                         help='Dropout rate')
     parser.add_argument('-max_epochs',
@@ -103,7 +103,7 @@ def main():
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
                 'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
-                'feedback', 'cross_val_split', 'over_loss_wt',  "new_ent_wt",  # Training params
+                'num_train_docs', 'cross_val_split', 'over_loss_wt',  "new_ent_wt",  # Training params
                 ]
     for key, val in vars(args).items():
         if key in imp_opts:
