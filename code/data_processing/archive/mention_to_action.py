@@ -2,6 +2,7 @@ import os
 import json
 from collections import defaultdict, OrderedDict
 from os import path
+import sys
 import numpy as np
 
 
@@ -184,8 +185,8 @@ def get_mention_to_action(cross_val_split, num_cells, seg_len, input_dir, output
 
 
 if __name__ == "__main__":
-    input_dir = "/home/shtoshni/Research/litbank_coref/data/segmentation/overlap"
-    output_dir = "/home/shtoshni/Research/litbank_coref/data/autoregressive/overlap/fixed_mem"
+    input_dir = sys.argv[1]
+    output_dir = sys.argv[2]
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 

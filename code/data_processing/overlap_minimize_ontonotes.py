@@ -41,19 +41,19 @@ class DocumentState(object):
         # finalized: segments, segment_subtoken_map
         # populate speakers from info
         subtoken_idx = 0
-        # for segment in self.segment_info:
-            # speakers = []
-            # for i, tok_info in enumerate(segment):
-            #     if tok_info is None and (i == 0 or i == len(segment) - 1):
-            #         speakers.append('[SPL]')
-            #     elif tok_info is None:
-            #         speakers.append(speakers[-1])
-            #     else:
-            #         speakers.append(tok_info[9])
-            #         if tok_info[4] == 'PRP':
-            #             self.pronouns.append(subtoken_idx)
-            #     subtoken_idx += 1
-            # self.speakers += [speakers]
+        for segment in self.segment_info:
+            speakers = []
+            for i, tok_info in enumerate(segment):
+                if tok_info is None and (i == 0 or i == len(segment) - 1):
+                    speakers.append('[SPL]')
+                elif tok_info is None:
+                    speakers.append(speakers[-1])
+                else:
+                    speakers.append(tok_info[9])
+                    if tok_info[4] == 'PRP':
+                        self.pronouns.append(subtoken_idx)
+                subtoken_idx += 1
+            self.speakers += [speakers]
         # populate sentence map
 
         # populate clusters
@@ -103,7 +103,7 @@ class DocumentState(object):
         subtoken_map = flatten(self.segment_subtoken_map)
         assert len(all_mentions) == len(set(all_mentions))
         num_words = len(flatten(self.segments))
-        # assert num_words == len(flatten(self.speakers))
+        assert num_words == len(flatten(self.speakers))
         assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
         assert num_words == len(sentence_map), (num_words, len(sentence_map))
         return {
@@ -112,7 +112,7 @@ class DocumentState(object):
             "real_sentences": self.real_segments,
             "start_indices": self.start_indices,
             "end_indices": self.end_indices,
-            # "speakers": self.speakers,
+            "speakers": self.speakers,
             # "constituents": [],
             # "ner": [],
             "clusters": merged_clusters,
@@ -193,7 +193,6 @@ def split_into_segments(document_state, max_segment_len, constraints1, constrain
             current = ovlp_current
 
 
-
 def get_sentence_map(segments, sentence_end):
     current = 0
     sent_map = []
@@ -209,7 +208,7 @@ def get_sentence_map(segments, sentence_end):
     return sent_map
 
 
-def get_document(document_lines, tokenizer, segment_len):
+def get_document(document_lines, tokenizer, segment_len, stats):
     document_state = DocumentState(document_lines[0])
     word_idx = -1
     for line in document_lines[1]:
@@ -217,8 +216,8 @@ def get_document(document_lines, tokenizer, segment_len):
         sentence_end = len(row) == 0
         if not sentence_end:
             assert len(row) >= 12
-            if len(row) == 12:
-                row.append('-')
+            # if len(row) == 12:
+            #     row.append('-')
             word_idx += 1
             word = normalize_word(row[3])
             subtokens = tokenizer.tokenize(word)
@@ -244,11 +243,9 @@ def get_document(document_lines, tokenizer, segment_len):
     return document
 
 
-def minimize_partition(split, cross_val_split, labels, stats, tokenizer,
-                       seg_len, input_dir, output_dir):
-    input_path = path.join(input_dir, "{}/{}.conll".format(cross_val_split, split))
-    output_path = path.join(output_dir, "{}/{}.{}.jsonlines".format(
-        cross_val_split, split, seg_len))
+def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
+    input_path = path.join(input_dir, "{}.english.v4_gold_conll".format(split))
+    output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
     count = 0
     print("Minimizing {}".format(input_path))
     documents = []
@@ -266,27 +263,20 @@ def minimize_partition(split, cross_val_split, labels, stats, tokenizer,
     with open(output_path, "w") as output_file:
         for document_lines in documents:
             document = get_document(
-                document_lines, tokenizer, seg_len)
+                document_lines, tokenizer, seg_len, stats)
             output_file.write(json.dumps(document))
             output_file.write("\n")
             count += 1
     print("Wrote {} documents to {}".format(count, output_path))
 
 
-def minimize_split(labels, stats, cross_val_split, seg_len, input_dir, output_dir):
+def minimize_split(seg_len, input_dir, output_dir, stats):
     # do_lower_case = True if 'chinese' in vocab_file else False
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-    # Create cross validation output dir
-    cross_val_dir = path.join(output_dir, str(cross_val_split))
-    if not path.exists(cross_val_dir):
-        os.makedirs(cross_val_dir)
 
-    minimize_partition("dev", cross_val_split,
-                       labels, stats, tokenizer, seg_len, input_dir, output_dir)
-    minimize_partition("train", cross_val_split,
-                       labels, stats, tokenizer, seg_len, input_dir, output_dir)
-    minimize_partition("test", cross_val_split,
-                       labels, stats, tokenizer, seg_len, input_dir, output_dir)
+    minimize_partition("dev", seg_len, input_dir, output_dir, tokenizer, stats)
+    minimize_partition("train", seg_len, input_dir, output_dir, tokenizer, stats)
+    minimize_partition("test", seg_len, input_dir, output_dir, tokenizer, stats)
 
 
 if __name__ == "__main__":
@@ -294,16 +284,9 @@ if __name__ == "__main__":
     output_dir = sys.argv[2]
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
-    for cross_val_split in range(10):
-        for seg_len in [128, 256, 384, 512]:
-        # for seg_len in [512]:
-        # for seg_len in [384, 512]:
-            labels = collections.defaultdict(set)
-            stats = collections.defaultdict(int)
-            minimize_split(labels, stats, cross_val_split,
-                           seg_len, input_dir, output_dir)
-            for k, v in labels.items():
-                print("{} = [{}]".format(k, ", ".join(
-                    "\"{}\"".format(label) for label in v)))
-            for k, v in stats.items():
-                print("{} = {}".format(k, v))
+    for seg_len in [128, 256, 384, 512]:
+        labels = collections.defaultdict(set)
+        stats = collections.defaultdict(int)
+        minimize_split(seg_len, input_dir, output_dir, stats)
+        for k, v in stats.items():
+            print("{} = {}".format(k, v))

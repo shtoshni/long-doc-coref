@@ -124,8 +124,8 @@ class Experiment:
                                   ("WO", 0), ("FL", 0), ("C", 0)])
             for example in self.train_examples:
                 self.train_info['global_steps'] += 1
-                loss, pred_action_list = model(example)
-                batch_errors = classify_errors(pred_action_list, example["actions"])
+                loss, pred_action_list, pred_mentions, gt_actions, gt_mentions = model(example)
+                batch_errors = classify_errors(pred_action_list, gt_actions)
                 for key in errors:
                     errors[key] += batch_errors[key]
 
@@ -197,19 +197,19 @@ class Experiment:
         corr_actions, total_actions = 0, 0
         with torch.no_grad():
             for example in self.dev_examples:
-                loss, pred_action_list = model(example, teacher_forcing=True)
-                batch_errors = classify_errors(pred_action_list, example["actions"])
+                loss, pred_action_list, pred_mentions, gt_actions, gt_mentions = model(example, teacher_forcing=True)
+                batch_errors = classify_errors(pred_action_list, gt_actions)
                 for key in errors:
                     errors[key] += batch_errors[key]
 
-                for pred_action, gt_action in zip(pred_action_list, example["actions"]):
+                for pred_action, gt_action in zip(pred_action_list, gt_actions):
                     pred_class_counter[pred_action[1]] += 1
                     gt_class_counter[gt_action[1]] += 1
 
                     if tuple(pred_action) == tuple(gt_action):
                         corr_actions += 1
 
-                total_actions += len(example["actions"])
+                total_actions += len(gt_actions)
                 total_loss = loss['coref']
                 batch_loss += total_loss.item()
 
@@ -242,8 +242,8 @@ class Experiment:
                 oracle_evaluator = CorefEvaluator()
                 coref_predictions, subtoken_maps = {}, {}
                 for example in data_iter:
-                    loss, action_list = model(example)
-                    for pred_action, gt_action in zip(action_list, example["actions"]):
+                    loss, action_list, pred_mentions, gt_actions, gt_mentions = model(example)
+                    for pred_action, gt_action in zip(action_list, gt_actions):
                         pred_class_counter[pred_action[1]] += 1
                         gt_class_counter[gt_action[1]] += 1
 
@@ -251,8 +251,7 @@ class Experiment:
                             corr_actions += 1
                     total_actions += len(action_list)
 
-                    predicted_clusters = action_sequences_to_clusters(
-                        action_list, example["ord_mentions"])
+                    predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
                     coref_predictions[example["doc_key"]] = predicted_clusters
                     subtoken_maps[example["doc_key"]] = example["subtoken_map"]
 
@@ -265,8 +264,9 @@ class Experiment:
                     num_gt_clusters += len(gold_clusters)
                     num_pred_clusters += len(predicted_clusters)
 
+                    oracle_clusters = action_sequences_to_clusters(gt_actions, gt_mentions)
                     oracle_clusters, mention_to_oracle = \
-                        mention_to_cluster(example["oracle_clusters"],
+                        mention_to_cluster(oracle_clusters,
                                            threshold=self.cluster_threshold)
                     evaluator.update(predicted_clusters, gold_clusters,
                                      mention_to_predicted, mention_to_gold)

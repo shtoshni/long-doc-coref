@@ -10,3 +10,5 @@ __pycache__/
 data/*
 .idea/*
 *.txt
+plots/*
+slurm_scripts/*

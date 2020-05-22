@@ -122,15 +122,16 @@ def main():
     if not path.exists(best_model_dir):
         os.makedirs(best_model_dir)
 
-    if args.mem_type in ['fixed_mem', 'lru']:
-        args.data_dir = path.join(
-            args.base_data_dir,
-            f'autoregressive/{args.doc_enc}/{args.mem_type}/{args.cross_val_split}/{args.num_cells}')
-    elif args.mem_type == 'unbounded':
-        args.data_dir = path.join(
-            args.base_data_dir, f'autoregressive/{args.doc_enc}/{args.mem_type}/{args.cross_val_split}')
-    else:
-        raise NotImplementedError
+    # if args.mem_type in ['fixed_mem', 'lru']:
+    #     args.data_dir = path.join(
+    #         args.base_data_dir,
+    #         f'autoregressive/{args.doc_enc}/{args.mem_type}/{args.cross_val_split}/{args.num_cells}')
+    # elif args.mem_type == 'unbounded':
+    #     args.data_dir = path.join(
+    #         args.base_data_dir, f'autoregressive/{args.doc_enc}/{args.mem_type}/{args.cross_val_split}')
+    args.data_dir = path.join(args.base_data_dir, f'litbank/{args.doc_enc}/{args.cross_val_split}')
+    # else:
+    #     raise NotImplementedError
     # print(args.data_dir)
     args.conll_data_dir = path.join(
         args.base_data_dir, "litbank_tenfold_splits/{}".format(args.cross_val_split))
