@@ -8,8 +8,8 @@ from document_encoder.overlap import OverlapDocEncoder
 
 class BaseController(nn.Module):
     def __init__(self, model='base', model_loc=None,
-                 dropout_rate=0.5, max_span_length=20, use_doc_rnn=False,
-                 ment_emb='attn', doc_enc='independent', **kwargs):
+                 dropout_rate=0.5, max_span_length=20,
+                 ment_emb='endpoint', doc_enc='independent', **kwargs):
         super(BaseController, self).__init__()
         self.max_span_length = max_span_length
 
@@ -20,7 +20,6 @@ class BaseController(nn.Module):
 
         self.hsize = self.doc_encoder.hsize
         self.drop_module = nn.Dropout(p=dropout_rate, inplace=False)
-        self.use_doc_rnn = use_doc_rnn
         self.ment_emb = ment_emb
         self.ment_emb_to_size_factor = {'attn': 3, 'endpoint': 2, 'max': 1}
 

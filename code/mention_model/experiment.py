@@ -8,33 +8,36 @@ from collections import defaultdict, OrderedDict
 
 import numpy as np
 import pytorch_utils.utils as utils
-from controller import Controller
-from litbank_utils.litbank_dataset import LitbankDataset
+from mention_model.controller import Controller
 from torch.utils.tensorboard import SummaryWriter
+from litbank_utils.utils import load_data
 
 EPS = 1e-8
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
 class Experiment:
-    def __init__(self, data_dir=None, model_dir=None, best_model_dir=None,
+    def __init__(self, data_dir=None, dataset='litbank',
+                 model_dir=None, best_model_dir=None,
                  # Model params
-                 batch_size=32, seed=0,
-                 init_lr=1e-3, max_gradient_norm=1.0,
-                 max_epochs=20, eval=False, feedback=False,
-                 slurm_id=None,
+                 seed=0, init_lr=1e-3, max_gradient_norm=5.0,
+                 max_epochs=20, max_segment_len=128, eval=False,
+                 num_train_docs=None,
                  # Other params
+                 slurm_id=None,
                  **kwargs):
 
-        self.single_window = kwargs['single_window']
         self.slurm_id = slurm_id
         # Set the random seed first
         self.seed = seed
         # Prepare data info
-        self.train_iter, self.valid_iter, self.test_iter \
-            = LitbankDataset.iters(
-                path=data_dir, batch_size=batch_size, single_window=self.single_window,
-                feedback=feedback)
+        self.train_examples, self.dev_examples, self.test_examples \
+            = load_data(data_dir, max_segment_len, dataset=dataset)
+        if num_train_docs is not None:
+            self.train_examples = self.train_examples[:num_train_docs]
+        self.data_iter_map = {"train": self.train_examples,
+                              "valid": self.dev_examples,
+                              "test": self.test_examples}
 
         if not slurm_id:
             # Initialize Summary Writer
@@ -62,8 +65,8 @@ class Experiment:
     def initialize_setup(self, init_lr, lr_decay=10):
         """Initialize model and training info."""
         self.train_info = {}
-        self.optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=init_lr, eps=1e-6, weight_decay=0.0)
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=init_lr, eps=1e-6)
         self.optim_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='max', factor=0.5, patience=3,
             min_lr=0.1 * init_lr, verbose=True)
@@ -74,8 +77,9 @@ class Experiment:
 
         if not path.exists(self.model_path):
             torch.manual_seed(self.seed)
+            np.random.seed(self.seed)
         else:
-            logging.info('Loading previous model: %s' % (self.model_path))
+            logging.info('Loading previous model: %s' % self.model_path)
             # Load model
             self.load_model(self.model_path)
 
@@ -93,10 +97,11 @@ class Experiment:
             start_time = time.time()
             # with autograd.detect_anomaly():
             model.train()
+            np.random.shuffle(self.train_examples)
 
-            for train_batch in self.train_iter:
+            for train_example in self.train_examples:
                 self.train_info['global_steps'] += 1
-                loss = model(train_batch)
+                loss = model(train_example)
                 total_loss = loss['mention']
                 if not self.slurm_id:
                     writer.add_scalar(
@@ -115,28 +120,15 @@ class Experiment:
 
                 optimizer.step()
 
-            l2_norm_dict = utils.get_l2_norm(model)
             # Update epochs done
             self.train_info['epoch'] = epoch + 1
-            fscore = 0.0
-            threshold = 0.0
             # Validation performance
             val_loss, fscore, threshold = self.eval_model()
 
             scheduler.step(fscore)
 
             if not self.slurm_id:
-                # writer.add_scalars("Training/F-score",
-                #                    {'val': fscore, 'train': train_fscore},
-                #                    global_step=self.train_info['epoch'])
-                # writer.add_scalars("Training/Loss",
-                #                    {'val': val_loss, 'train': train_loss},
-                #                    global_step=self.train_info['epoch'])
                 writer.add_scalar("Training/Threshold", threshold,
-                                  global_step=self.train_info['epoch'])
-                writer.add_scalar("Training/L2_params", l2_norm_dict['param'],
-                                  global_step=self.train_info['epoch'])
-                writer.add_scalar("Training/L2_grad", l2_norm_dict['grad'],
                                   global_step=self.train_info['epoch'])
 
             # Update model if validation performance improves
@@ -171,35 +163,21 @@ class Experiment:
         model = self.model
         model.eval()
 
-        # id_prefix, data_iter = None, None
-        # if split == 'valid':
-        #     id_prefix, data_iter = 'dev', self.valid_iter
-        # elif split == 'train':
-        #     id_prefix, data_iter = 'train', self.train_iter
-        # elif split == 'test':
-        #     id_prefix, data_iter = 'test', self.test_iter
-        data_iter = None
-        if split == 'valid':
-            data_iter = self.valid_iter
-        elif split == 'train':
-            data_iter = self.train_iter
-        elif split == 'test':
-            data_iter = self.test_iter
+        dev_examples = self.data_iter_map[split]
 
         with torch.no_grad():
             total_loss = 0.0
             total_weight = 0.0
             # Output file to write the outputs
             agg_results = {}
-            for j, data_batch in enumerate(data_iter):
-                gold_start_lens = data_batch.gold_starts[1]
-                total_y = torch.sum(gold_start_lens)
-                batch_loss, batch_weight, preds, y = model(data_batch)
-                total_loss += batch_loss.item()
-                total_weight += batch_weight.item()
+            for dev_example in dev_examples:
+                example_loss, example_weight, preds, y, cand_starts, cand_ends = model(dev_example)
+
+                total_loss += example_loss.item()
+                total_weight += example_weight
 
                 if threshold:
-                    corr, total_preds, _ = self.eval_preds(
+                    corr, total_preds, total_y = self.eval_preds(
                         preds, y, threshold=threshold)
                     if threshold not in agg_results:
                         agg_results[threshold] = defaultdict(float)
@@ -214,7 +192,7 @@ class Experiment:
                 else:
                     threshold_range = np.arange(0.0, 0.5, 0.01)
                     for cur_threshold in threshold_range:
-                        corr, total_preds, _ = self.eval_preds(
+                        corr, total_preds, total_y = self.eval_preds(
                             preds, y, threshold=cur_threshold)
                         if cur_threshold not in agg_results:
                             agg_results[cur_threshold] = defaultdict(float)

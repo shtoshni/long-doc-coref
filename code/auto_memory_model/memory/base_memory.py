@@ -37,10 +37,10 @@ class BaseMemory(nn.Module):
         self.query_projector = nn.Linear(self.hsize + 2 * self.emb_size, self.mem_size)
 
         self.mem_coref_mlp = MLP(3 * self.mem_size + 2 * self.emb_size, self.mlp_size, 1,
-                                 num_layers=coref_mlp_depth, bias=True, drop_module=drop_module)
+                                 num_hidden_layers=coref_mlp_depth, bias=True, drop_module=drop_module)
         if self.use_last_mention:
             self.ment_coref_mlp = MLP(3 * self.mem_size, self.mlp_size, 1,
-                                      num_layers=mlp_depth, bias=True, drop_module=drop_module)
+                                      num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
 
         self.last_action_emb = nn.Embedding(4, self.emb_size)
         self.distance_embeddings = nn.Embedding(11, self.emb_size)

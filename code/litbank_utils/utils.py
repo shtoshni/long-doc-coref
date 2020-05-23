@@ -2,7 +2,7 @@ import json
 from os import path
 
 
-def load_litbank_data(data_dir, max_segment_len):
+def load_data(data_dir, max_segment_len, dataset='litbank'):
     all_splits = []
     for split in ["train", "dev", "test"]:
         jsonl_file = path.join(data_dir, "{}.{}.jsonlines".format(split, max_segment_len))
@@ -14,8 +14,15 @@ def load_litbank_data(data_dir, max_segment_len):
 
     train_data, dev_data, test_data = all_splits
 
-    assert(len(train_data) == 80)
-    assert(len(dev_data) == 10)
-    assert(len(test_data) == 10)
+    if dataset == 'litbank':
+        assert(len(train_data) == 80)
+        assert(len(dev_data) == 10)
+        assert(len(test_data) == 10)
+    elif dataset == 'ontonotes':
+        assert (len(train_data) == 2802)
+        assert (len(dev_data) == 343)
+        assert (len(test_data) == 348)
 
     return train_data, dev_data, test_data
+
+

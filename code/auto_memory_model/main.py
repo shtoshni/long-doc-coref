@@ -54,7 +54,7 @@ def main():
                         help='Memory size used in the model')
     parser.add_argument('-mlp_size', default=1024, type=int,
                         help='MLP size used in the model')
-    parser.add_argument('-coref_mlp_depth', default=1, type=int,
+    parser.add_argument('-coref_mlp_depth', default=2, type=int,
                         help='Number of hidden layers in Coref MLP')
     parser.add_argument('-mlp_depth', default=1, type=int,
                         help='Number of hidden layers in other MLPs')
@@ -75,9 +75,9 @@ def main():
                         default=1.0, type=float)
     parser.add_argument('-over_loss_wt', help='Weight of overwrite loss',
                         default=0.1, type=float)
-    parser.add_argument('-max_span_length', default=10,
-                        help='Random seed to get different runs', type=int)
-    parser.add_argument('-num_train_docs', default=80, type=int,
+    parser.add_argument('-max_span_width', default=10,
+                        help='Maximum span width of candidate mentions.', type=int)
+    parser.add_argument('-num_train_docs', default=None, type=int,
                         help='Number of training docs.')
     parser.add_argument('-dropout_rate', default=0.5, type=float,
                         help='Dropout rate')
@@ -122,17 +122,7 @@ def main():
     if not path.exists(best_model_dir):
         os.makedirs(best_model_dir)
 
-    # if args.mem_type in ['fixed_mem', 'lru']:
-    #     args.data_dir = path.join(
-    #         args.base_data_dir,
-    #         f'autoregressive/{args.doc_enc}/{args.mem_type}/{args.cross_val_split}/{args.num_cells}')
-    # elif args.mem_type == 'unbounded':
-    #     args.data_dir = path.join(
-    #         args.base_data_dir, f'autoregressive/{args.doc_enc}/{args.mem_type}/{args.cross_val_split}')
     args.data_dir = path.join(args.base_data_dir, f'litbank/{args.doc_enc}/{args.cross_val_split}')
-    # else:
-    #     raise NotImplementedError
-    # print(args.data_dir)
     args.conll_data_dir = path.join(
         args.base_data_dir, "litbank_tenfold_splits/{}".format(args.cross_val_split))
     print(args.data_dir)

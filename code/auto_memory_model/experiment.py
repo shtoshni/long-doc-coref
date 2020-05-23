@@ -10,7 +10,7 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
 from utils import action_sequences_to_clusters, classify_errors
-from litbank_utils.utils import load_litbank_data
+from litbank_utils.utils import load_data
 from coref_utils.conll import evaluate_conll
 from coref_utils.utils import mention_to_cluster
 from coref_utils.metrics import CorefEvaluator
@@ -29,7 +29,7 @@ class Experiment:
                  model_dir=None, best_model_dir=None,
                  # Model params
                  batch_size=32, seed=0, init_lr=1e-3, max_gradient_norm=5.0,
-                 max_epochs=20, max_segment_len=128, eval=False, num_train_docs=80,
+                 max_epochs=20, max_segment_len=128, eval=False, num_train_docs=None,
                  mem_type=False,
                  no_singletons=False,
                  # Other params
@@ -39,9 +39,10 @@ class Experiment:
         self.seed = seed
         # Prepare data info
         self.train_examples, self.dev_examples, self.test_examples \
-            = load_litbank_data(data_dir, max_segment_len)
+            = load_data(data_dir, max_segment_len)
         # if feedback:
-        self.train_examples = self.train_examples[:num_train_docs]
+        if num_train_docs is not None:
+            self.train_examples = self.train_examples[:num_train_docs]
 
         self.data_iter_map = {"train": self.train_examples,
                               "dev": self.dev_examples,
