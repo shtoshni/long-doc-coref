@@ -29,11 +29,11 @@ def main():
         default="/home/shtoshni/Research/litbank_coref/lrec2020-coref/"
         "reference-coreference-scorers/scorer.pl")
 
-    parser.add_argument('-model', default='base', type=str,
+    parser.add_argument('-model_size', default='base', type=str,
                         help='BERT model type')
     parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
-    parser.add_argument('-model_loc', default=None, type=str,
+    parser.add_argument('-pretrained_bert_dir', default=None, type=str,
                         help='SpanBERT model location')
     parser.add_argument('-max_segment_len', default=512, type=int,
                         help='Max segment length of BERT segments.')
@@ -97,7 +97,7 @@ def main():
     # Get model directory name
     opt_dict = OrderedDict()
     # Only include important options in hash computation
-    imp_opts = ['model', 'max_segment_len', 'ment_emb', "doc_enc",  # Encoder params
+    imp_opts = ['model_size', 'max_segment_len', 'ment_emb', "doc_enc",  # Encoder params
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
                 'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',

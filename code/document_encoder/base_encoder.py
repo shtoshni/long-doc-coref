@@ -6,16 +6,16 @@ from transformers import BertModel, BertTokenizer
 
 
 class BaseDocEncoder(nn.Module):
-    def __init__(self, model='base', model_loc=None):
+    def __init__(self, model_size='base', pretrained_bert_dir=None, **kwargs):
         super(BaseDocEncoder, self).__init__()
         self.last_layers = 1
 
         # Summary Writer
-        if model_loc:
+        if pretrained_bert_dir:
             self.bert = BertModel.from_pretrained(
-                path.join(model_loc, "spanbert_{}".format(model)), output_hidden_states=True)
+                path.join(pretrained_bert_dir, "spanbert_{}".format(model_size)), output_hidden_states=True)
         else:
-            bert_model_name = 'bert-' + model + '-cased'
+            bert_model_name = 'bert-' + model_size + '-cased'
             self.bert = BertModel.from_pretrained(
                 bert_model_name, output_hidden_states=True)
 

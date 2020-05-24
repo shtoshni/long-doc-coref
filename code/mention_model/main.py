@@ -29,11 +29,11 @@ def main():
     parser.add_argument('-base_model_dir',
                         default='/home/shtoshni/Research/litbank_coref/models',
                         help='Root folder storing model runs', type=str)
-    parser.add_argument('-model', default='base', type=str,
+    parser.add_argument('-model_size', default='base', type=str,
                         help='BERT model type')
     parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
-    parser.add_argument('-model_loc', default=None, type=str,
+    parser.add_argument('-pretrained_bert_dir', default=None, type=str,
                         help='SpanBERT model location')
     parser.add_argument('-max_segment_len', default=512, type=int,
                         help='Max segment length of BERT segments.')

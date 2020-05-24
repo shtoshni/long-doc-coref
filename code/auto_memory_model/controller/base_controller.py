@@ -8,16 +8,16 @@ from auto_memory_model.utils import get_ordered_mentions
 
 
 class BaseController(nn.Module):
-    def __init__(self, model='base', model_loc=None,
+    def __init__(self,
                  dropout_rate=0.5, max_span_width=20,
                  ment_emb='endpoint', doc_enc='independent', **kwargs):
         super(BaseController, self).__init__()
         self.max_span_width = max_span_width
 
         if doc_enc == 'independent':
-            self.doc_encoder = IndependentDocEncoder(model=model, model_loc=model_loc)
+            self.doc_encoder = IndependentDocEncoder(**kwargs)
         else:
-            self.doc_encoder = OverlapDocEncoder(model=model, model_loc=model_loc)
+            self.doc_encoder = OverlapDocEncoder(**kwargs)
 
         self.hsize = self.doc_encoder.hsize
         self.drop_module = nn.Dropout(p=dropout_rate, inplace=False)

@@ -68,9 +68,7 @@ class Controller(BaseController):
                     gold_ments[span_start, span_width_idx] = 1
 
         filt_gold_ments = gold_ments.reshape(-1)[flat_cand_mask].float()
-
-        assert(torch.sum(gold_ments) == torch.sum(filt_gold_ments))  # Filtering shouldn't remove gold mentions
-
+        # assert(torch.sum(gold_ments) == torch.sum(filt_gold_ments))  # Filtering shouldn't remove gold mentions
         return filt_gold_ments
 
     def forward(self, example):
@@ -115,7 +113,7 @@ class Controller(BaseController):
         else:
             pred_mention_probs = torch.sigmoid(mention_scores)
             # Calculate Recall
-            k = int(0.4 * num_words)
+            k = int(0.2 * num_words)
             topk_indices = torch.topk(mention_scores, k)[1]
             topk_indices_mask = torch.zeros_like(mention_scores).cuda()
             topk_indices_mask[topk_indices] = 1
