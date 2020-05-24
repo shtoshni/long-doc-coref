@@ -19,7 +19,6 @@ from auto_memory_model.controller.lfm_controller import LearnedFixedMemControlle
 from auto_memory_model.controller.lru_controller import LRUController
 from auto_memory_model.controller.um_controller import UnboundedMemController
 
-EPS = 1e-8
 NUM_STUCK_EPOCHS = 10
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
@@ -27,6 +26,7 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 class Experiment:
     def __init__(self, data_dir=None, conll_data_dir=None,
                  model_dir=None, best_model_dir=None,
+                 pretrained_mention_model=None,
                  # Model params
                  batch_size=32, seed=0, init_lr=1e-3, max_gradient_norm=5.0,
                  max_epochs=20, max_segment_len=128, eval=False, num_train_docs=None,
@@ -37,6 +37,7 @@ class Experiment:
 
         # Set the random seed first
         self.seed = seed
+        self.pretrained_mention_model = pretrained_mention_model
         # Prepare data info
         self.train_examples, self.dev_examples, self.test_examples \
             = load_data(data_dir, max_segment_len)
@@ -97,6 +98,11 @@ class Experiment:
         if not path.exists(self.model_path):
             torch.manual_seed(self.seed)
             np.random.seed(self.seed)
+            # Try to initialize the mention model part
+            if path.exists(self.pretrained_mention_model):
+                print("Found pretrained model!!")
+                checkpoint = torch.load(self.pretrained_mention_model)
+                self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         else:
             logging.info('Loading previous model: %s' % (self.model_path))
             # Load model
@@ -121,8 +127,8 @@ class Experiment:
             model.train()
             np.random.shuffle(self.train_examples)
             batch_loss = 0
-            errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0),
-                                  ("WO", 0), ("FL", 0), ("C", 0)])
+            errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0), ("WO", 0),
+                                  ("FL", 0), ("C", 0), ("WM", 0), ("CM", 0)])
             for example in self.train_examples:
                 self.train_info['global_steps'] += 1
                 loss, pred_action_list, pred_mentions, gt_actions, gt_mentions = model(example)
@@ -192,7 +198,7 @@ class Experiment:
         model = self.model
         model.eval()
         errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0),
-                              ("WO", 0), ("FL", 0), ("C", 0)])
+                              ("WO", 0), ("FL", 0), ("C", 0), ("WM", 0), ("CM", 0)])
         batch_loss = 0
         pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
         corr_actions, total_actions = 0, 0
@@ -275,6 +281,7 @@ class Experiment:
                                             mention_to_oracle, mention_to_gold)
 
                     log_example = dict(example)
+                    log_example["gt_actions"] = gt_actions
                     log_example["pred_actions"] = action_list
                     log_example["predicted_clusters"] = predicted_clusters
 

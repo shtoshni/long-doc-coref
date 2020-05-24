@@ -54,10 +54,11 @@ class Experiment:
         self.model = Controller(**kwargs)
         self.model = self.model.cuda()
 
+        self.initialize_setup(init_lr=init_lr)
+        self.model = self.model.cuda()
+        utils.print_model_info(self.model)
+
         if not eval:
-            self.initialize_setup(init_lr=init_lr)
-            self.model = self.model.cuda()
-            utils.print_model_info(self.model)
             if self.pretrained_model is not None:
                 self.eval_model(split='valid')
                 self.eval_model(split='test')

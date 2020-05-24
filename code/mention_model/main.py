@@ -10,6 +10,7 @@ import subprocess
 from mention_model.experiment import Experiment
 from mention_model.utils import get_mention_model_name
 
+
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
@@ -37,6 +38,8 @@ def main():
                         help='SpanBERT model location')
     parser.add_argument('-max_segment_len', default=512, type=int,
                         help='Max segment length of BERT segments.')
+    parser.add_argument('-top_span_ratio', default=0.4, type=float,
+                        help='Ratio of top spans proposed as mentions.')
 
     parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'max', 'endpoint'],
                         type=str, help='If true use an RNN on top of mention embeddings.')
@@ -84,13 +87,6 @@ def main():
         args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
     else:
         args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
-
-    # Check for pretrained models
-    # if args.dataset == 'ontonotes':
-    #     args.pretrained_model = path.join(args.pretrained_mention_model_dir,
-    #                                       f'mention_ontonotes_{args.model}_{args.ment_emb}.pt')
-    # else:
-    #     args.pretrained_model = None
 
     # Log directory for Tensorflow Summary
     log_dir = path.join(model_dir, "logs")

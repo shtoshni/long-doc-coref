@@ -27,7 +27,7 @@ def action_sequences_to_clusters(actions, mentions):
             clusters.append([mention])
         elif action_type == 'c':
             cell_to_clusters[cell_idx].append(mention)
-        else:
+        elif action_type == 'o':
             # Overwrite
             if cell_idx in cell_to_clusters:
                 # Remove the old cluster and initialize the new
@@ -47,7 +47,8 @@ def classify_errors(pred_action_list, gt_action_list):
     # FN - Overwrite or Ignore when there's a coref decision
     decisions = {"WL": 0, "FN": 0,
                  "WF": 0, "WO": 0,
-                 "FL": 0, "C": 0}
+                 "FL": 0, "C": 0,
+                 "WM": 0, "CM": 0}
     for cur_pred_action, cur_gt_action in zip(pred_action_list, gt_action_list):
         pred_tuple, gt_tuple = tuple(cur_pred_action), tuple(cur_gt_action)
         # (_, pred_action), (_, gt_action) = pred_tuple, gt_tuple
@@ -71,7 +72,7 @@ def classify_errors(pred_action_list, gt_action_list):
                 decisions['WF'] += 1
             else:
                 decisions['FL'] += 1
-        else:
+        elif gt_action == "i":
             # GT is ignore
             if pred_action == 'o':
                 decisions['WF'] += 1
@@ -79,5 +80,10 @@ def classify_errors(pred_action_list, gt_action_list):
                 decisions['FL'] += 1
             else:
                 decisions['C'] += 1
+        elif gt_action == "n":
+            if pred_action == "n":
+                decisions['CM'] += 1
+            else:
+                decisions['WM'] += 1
 
     return decisions

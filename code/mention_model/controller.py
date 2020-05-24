@@ -6,11 +6,13 @@ from pytorch_utils.modules import MLP
 
 
 class Controller(BaseController):
-    def __init__(self, mlp_size=1024, mlp_depth=1, max_span_width=30, **kwargs):
+    def __init__(self, mlp_size=1024, mlp_depth=1, max_span_width=30, top_span_ratio=0.4,
+                 **kwargs):
         super(Controller, self).__init__(**kwargs)
         self.max_span_width = max_span_width
         self.mlp_size = mlp_size
         self.mlp_depth = mlp_depth
+        self.top_span_ratio = top_span_ratio
 
         self.span_width_embeddings = nn.Embedding(self.max_span_width, 20)
         self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, 20)
@@ -113,7 +115,7 @@ class Controller(BaseController):
         else:
             pred_mention_probs = torch.sigmoid(mention_scores)
             # Calculate Recall
-            k = int(0.2 * num_words)
+            k = int(self.top_span_ratio * num_words)
             topk_indices = torch.topk(mention_scores, k)[1]
             topk_indices_mask = torch.zeros_like(mention_scores).cuda()
             topk_indices_mask[topk_indices] = 1

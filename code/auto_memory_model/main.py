@@ -7,6 +7,7 @@ import subprocess
 from collections import OrderedDict
 
 from experiment import Experiment
+from mention_model.utils import get_mention_model_name
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
@@ -39,10 +40,12 @@ def main():
                         help='Max segment length of BERT segments.')
 
     # Mention variables
-    parser.add_argument('-max_span_width', default=20, type=int,
+    parser.add_argument('-max_span_width', default=30, type=int,
                         help='Max span width.')
     parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'endpoint'],
                         type=str, help='If true use an RNN on top of mention embeddings.')
+    parser.add_argument('-top_span_ratio', default=0.4, type=float,
+                        help='Ratio of top spans proposed as mentions.')
 
     # Memory variables
     parser.add_argument('-mem_type', default='fixed_mem',
@@ -52,7 +55,7 @@ def main():
                         help="Number of memory cells.")
     parser.add_argument('-mem_size', default=None, type=int,
                         help='Memory size used in the model')
-    parser.add_argument('-mlp_size', default=1024, type=int,
+    parser.add_argument('-mlp_size', default=1000, type=int,
                         help='MLP size used in the model')
     parser.add_argument('-coref_mlp_depth', default=1, type=int,
                         help='Number of hidden layers in Coref MLP')
@@ -97,7 +100,7 @@ def main():
     # Get model directory name
     opt_dict = OrderedDict()
     # Only include important options in hash computation
-    imp_opts = ['model_size', 'max_segment_len', 'ment_emb', "doc_enc",  # Encoder params
+    imp_opts = ['model_size', 'max_segment_len', 'ment_emb', "doc_enc", 'top_span_ratio',  # Encoder params
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
                 'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
@@ -124,6 +127,12 @@ def main():
     args.conll_data_dir = path.join(
         args.base_data_dir, "litbank_tenfold_splits/{}".format(args.cross_val_split))
     print(args.data_dir)
+
+    # Get mention model name
+    args.pretrained_mention_model = path.join(
+        path.join(args.base_model_dir, get_mention_model_name(args)), "best_models/model.pth")
+    print(args.pretrained_mention_model)
+
     # Log directory for Tensorflow Summary
     log_dir = path.join(model_dir, "logs")
     if not path.exists(log_dir):
