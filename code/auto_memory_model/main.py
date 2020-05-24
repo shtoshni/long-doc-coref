@@ -23,25 +23,25 @@ def main():
                         default='/home/shtoshni/Research/litbank_coref/models',
                         help='Root folder storing model runs', type=str)
     parser.add_argument(
+        '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
+    parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="/home/shtoshni/Research/litbank_coref/lrec2020-coref/"
         "reference-coreference-scorers/scorer.pl")
 
     parser.add_argument('-model', default='base', type=str,
                         help='BERT model type')
-    parser.add_argument('-doc_enc', default='independent', type=str,
+    parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
     parser.add_argument('-model_loc', default=None, type=str,
                         help='SpanBERT model location')
     parser.add_argument('-max_segment_len', default=512, type=int,
                         help='Max segment length of BERT segments.')
 
-    # Encoder variables
-    # parser.add_argument('-hsize', default=400, type=int,
-    #                     help='Hidden size used in the model')
-    parser.add_argument('-use_doc_rnn', default=False, action="store_true",
-                        help='If true use an RNN on top of BERT embeddings.')
-    parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'max', 'endpoint'],
+    # Mention variables
+    parser.add_argument('-max_span_width', default=20, type=int,
+                        help='Max span width.')
+    parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'endpoint'],
                         type=str, help='If true use an RNN on top of mention embeddings.')
 
     # Memory variables
@@ -54,7 +54,7 @@ def main():
                         help='Memory size used in the model')
     parser.add_argument('-mlp_size', default=1024, type=int,
                         help='MLP size used in the model')
-    parser.add_argument('-coref_mlp_depth', default=2, type=int,
+    parser.add_argument('-coref_mlp_depth', default=1, type=int,
                         help='Number of hidden layers in Coref MLP')
     parser.add_argument('-mlp_depth', default=1, type=int,
                         help='Number of hidden layers in other MLPs')
@@ -75,8 +75,6 @@ def main():
                         default=1.0, type=float)
     parser.add_argument('-over_loss_wt', help='Weight of overwrite loss',
                         default=0.1, type=float)
-    parser.add_argument('-max_span_width', default=10,
-                        help='Maximum span width of candidate mentions.', type=int)
     parser.add_argument('-num_train_docs', default=None, type=int,
                         help='Number of training docs.')
     parser.add_argument('-dropout_rate', default=0.5, type=float,
@@ -99,11 +97,11 @@ def main():
     # Get model directory name
     opt_dict = OrderedDict()
     # Only include important options in hash computation
-    imp_opts = ['model', 'max_segment_len', 'use_doc_rnn',  'ment_emb', "doc_enc",  # Encoder params
+    imp_opts = ['model', 'max_segment_len', 'ment_emb', "doc_enc",  # Encoder params
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
                 'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
-                'num_train_docs', 'cross_val_split', 'over_loss_wt',  "new_ent_wt",  # Training params
+                'dataset', 'num_train_docs', 'cross_val_split', 'over_loss_wt',  "new_ent_wt",  # Training params
                 ]
     for key, val in vars(args).items():
         if key in imp_opts:

@@ -340,6 +340,9 @@ class Experiment:
     def load_model(self, location):
         checkpoint = torch.load(location)
         self.model.load_state_dict(checkpoint['model'], strict=False)
+        print(type(checkpoint['model']))
+        print(checkpoint['model'].keys())
+
         self.optimizer.load_state_dict(
             checkpoint['optimizer'])
         self.optim_scheduler.load_state_dict(

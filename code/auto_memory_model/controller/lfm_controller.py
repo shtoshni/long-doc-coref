@@ -126,15 +126,7 @@ class LearnedFixedMemController(BaseController):
         """
         Encode a batch of excerpts.
         """
-        encoded_output = self.doc_encoder(example)
-
-        gt_mentions = get_ordered_mentions(example["clusters"])
-        pred_mentions = gt_mentions
-        gt_actions = self.get_actions(pred_mentions, example["clusters"])
-
-        mention_embs = self.get_mention_embeddings(
-            pred_mentions, encoded_output, method=self.ment_emb)
-        mention_emb_list = torch.unbind(mention_embs, dim=0)
+        gt_mentions, pred_mentions, gt_actions, mention_emb_list = self.get_mention_embs_and_actions(example)
 
         action_prob_list, action_list = self.memory_net(
             mention_emb_list, gt_actions, pred_mentions,

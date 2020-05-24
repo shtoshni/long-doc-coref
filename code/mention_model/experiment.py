@@ -18,7 +18,7 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 class Experiment:
     def __init__(self, data_dir=None, dataset='litbank',
-                 model_dir=None, best_model_dir=None,
+                 model_dir=None, best_model_dir=None, pretrained_model=None,
                  # Model params
                  seed=0, init_lr=1e-3, max_gradient_norm=5.0,
                  max_epochs=20, max_segment_len=128, eval=False,
@@ -27,6 +27,7 @@ class Experiment:
                  slurm_id=None,
                  **kwargs):
 
+        self.pretrained_model = pretrained_model
         self.slurm_id = slurm_id
         # Set the random seed first
         self.seed = seed
@@ -57,8 +58,13 @@ class Experiment:
             self.initialize_setup(init_lr=init_lr)
             self.model = self.model.cuda()
             utils.print_model_info(self.model)
-            self.train(max_epochs=max_epochs,
-                       max_gradient_norm=max_gradient_norm)
+            if self.pretrained_model is not None:
+                self.eval_model(split='valid')
+                self.eval_model(split='test')
+                sys.exit()
+            else:
+                self.train(max_epochs=max_epochs,
+                           max_gradient_norm=max_gradient_norm)
         # Finally evaluate model
         self.final_eval(model_dir)
 
@@ -78,6 +84,9 @@ class Experiment:
         if not path.exists(self.model_path):
             torch.manual_seed(self.seed)
             np.random.seed(self.seed)
+            if self.pretrained_model is not None:
+                checkpoint = torch.load(self.pretrained_model)
+                self.model.load_state_dict(checkpoint, strict=False)
         else:
             logging.info('Loading previous model: %s' % self.model_path)
             # Load model
@@ -168,13 +177,20 @@ class Experiment:
         with torch.no_grad():
             total_loss = 0.0
             total_weight = 0.0
+            total_recall = 0
+            total_gold = 0.0
+            all_golds = 0.0
             # Output file to write the outputs
             agg_results = {}
             for dev_example in dev_examples:
-                example_loss, example_weight, preds, y, cand_starts, cand_ends = model(dev_example)
+                example_loss, example_weight, preds, y, cand_starts, cand_ends, recall = model(dev_example)
 
                 total_loss += example_loss.item()
                 total_weight += example_weight
+
+                all_golds += sum([len(cluster) for cluster in dev_example["clusters"]])
+                total_gold += torch.sum(y).item()
+                total_recall += recall
 
                 if threshold:
                     corr, total_preds, total_y = self.eval_preds(
@@ -217,7 +233,9 @@ class Experiment:
 
             logging.info("Max F-score: %.3f, Threshold: %.3f" %
                          (max_fscore, threshold))
-
+        print(total_recall, total_gold)
+        print(total_recall, all_golds)
+        logging.info("Recall: %.3f" % (total_recall/total_gold))
         return avg_loss, max_fscore, threshold
 
     def final_eval(self, model_dir):

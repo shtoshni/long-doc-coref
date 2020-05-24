@@ -23,6 +23,9 @@ def main():
         help='Root directory of data', type=str)
     parser.add_argument(
         '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
+    parser.add_argument(
+        '-pretrained_mention_model_dir', type=str,
+        default='/home/shtoshni/Research/litbank_coref/resources/mentions')
     parser.add_argument('-base_model_dir',
                         default='/home/shtoshni/Research/litbank_coref/models',
                         help='Root folder storing model runs', type=str)
@@ -35,6 +38,8 @@ def main():
     parser.add_argument('-max_segment_len', default=512, type=int,
                         help='Max segment length of BERT segments.')
 
+    parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'max', 'endpoint'],
+                        type=str, help='If true use an RNN on top of mention embeddings.')
     parser.add_argument('-max_span_width',
                         help='Max span width', default=20, type=int)
     parser.add_argument('-mlp_depth', default=1, type=int,
@@ -79,6 +84,13 @@ def main():
         args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
     else:
         args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
+
+    # Check for pretrained models
+    # if args.dataset == 'ontonotes':
+    #     args.pretrained_model = path.join(args.pretrained_mention_model_dir,
+    #                                       f'mention_ontonotes_{args.model}_{args.ment_emb}.pt')
+    # else:
+    #     args.pretrained_model = None
 
     # Log directory for Tensorflow Summary
     log_dir = path.join(model_dir, "logs")
