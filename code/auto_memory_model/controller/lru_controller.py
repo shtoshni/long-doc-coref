@@ -149,7 +149,6 @@ class LRUController(LearnedFixedMemController):
             teacher_forcing=teacher_forcing)
 
         loss = {}
-
         coref_new_prob_list, over_ign_prob_list = zip(*action_prob_list)
         action_prob_tens = torch.stack(coref_new_prob_list, dim=0).cuda()  # M x (cells + 1)
         action_indices = self.action_to_coref_new_idx(gt_actions)

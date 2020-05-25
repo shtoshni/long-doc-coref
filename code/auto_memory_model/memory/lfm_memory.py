@@ -38,8 +38,8 @@ class LearnedFixedMemory(BaseFixedMemory):
 
         return coref_new_scores, overwrite_ign_scores
 
-    def interpret_scores(self, coref_new_not_scores, overwrite_ign_scores):
-        pred_max_idx = torch.argmax(coref_new_not_scores).item()
+    def interpret_scores(self, coref_new_scores, overwrite_ign_scores):
+        pred_max_idx = torch.argmax(coref_new_scores).item()
         if pred_max_idx < self.num_cells:
             # Coref
             return pred_max_idx, 'c'
@@ -73,16 +73,16 @@ class LearnedFixedMemory(BaseFixedMemory):
             #     torch.cat([ment_emb, last_action_emb], dim=0))
             query_vector = ment_emb
 
-            coref_new_not_scores, overwrite_ign_scores = self.predict_action(
+            coref_new_scores, overwrite_ign_scores = self.predict_action(
                 query_vector, ment_score, mem_vectors, last_ment_vectors,
                 ment_idx, ent_counter, last_mention_idx)
 
-            action_logit_list.append((coref_new_not_scores, overwrite_ign_scores))
+            action_logit_list.append((coref_new_scores, overwrite_ign_scores))
 
             # pred_max_idx = torch.argmax(all_log_probs).item()
             # pred_cell_idx = pred_max_idx % self.num_cells
             # pred_action_idx = pred_max_idx // self.num_cells
-            pred_cell_idx, pred_action_str = self.interpret_scores(coref_new_not_scores, overwrite_ign_scores)
+            pred_cell_idx, pred_action_str = self.interpret_scores(coref_new_scores, overwrite_ign_scores)
             # pred_action_str = self.action_idx_to_str[pred_action_idx]
             # During training this records the next actions  - during testing it records the
             # predicted sequence of actions

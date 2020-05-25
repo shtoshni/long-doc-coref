@@ -1,30 +1,59 @@
 import torch
+from pytorch_utils.modules import MLP
 from auto_memory_model.memory.base_fixed_memory import BaseMemory
 
 
 class UnboundedMemory(BaseMemory):
     def __init__(self, **kwargs):
         super(UnboundedMemory, self).__init__(**kwargs)
+        self.not_a_mention = MLP(input_size=self.mem_size, hidden_size=self.mlp_size, output_size=1,
+                                 num_hidden_layers=self.mlp_depth,
+                                 bias=True, drop_module=self.drop_module)
 
     def initialize_memory(self):
         """Initialize the memory to null with only 1 memory cell to begin with."""
         mem = torch.zeros(1, self.mem_size).cuda()
-        ent_counter = torch.tensor([0]).cuda()
+        ent_counter = torch.tensor([0.0]).cuda()
         last_mention_idx = [0]
         return mem, ent_counter, last_mention_idx
 
-    def predict_action(self, query_vector, mem_vectors, last_ment_vectors,
+    def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
                        ment_idx, ent_counter, last_mention_idx):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
         counter_embs = self.get_counter_emb(ent_counter)
 
-        coref_new_scores, coref_new_log_prob = self.get_coref_new_log_prob(
-            query_vector, mem_vectors, last_ment_vectors,
+        coref_new_scores = self.get_coref_new_log_prob(
+            query_vector, ment_score, mem_vectors, last_ment_vectors,
             ent_counter, distance_embs, counter_embs)
 
-        return coref_new_scores
+        not_a_ment_score = self.not_a_mention(query_vector)
+        over_ign_score = torch.cat([torch.tensor([0.0]).cuda(), not_a_ment_score - ment_score], dim=0).cuda()
 
-    def forward(self, mention_emb_list, actions, mentions,
+        return coref_new_scores, over_ign_score
+
+    def interpret_scores(self, coref_new_scores, overwrite_ign_scores, first_overwrite):
+        if first_overwrite:
+            num_ents = 0
+            num_cells = 1
+        else:
+            num_ents = coref_new_scores.shape[0] - 1
+            num_cells = num_ents
+
+        pred_max_idx = torch.argmax(coref_new_scores).item()
+        if pred_max_idx < num_cells:
+            # Coref
+            return pred_max_idx, 'c'
+        elif pred_max_idx == num_cells:
+            # Overwrite/Ignore
+            over_max_idx = torch.argmax(overwrite_ign_scores).item()
+            if over_max_idx == 0:
+                return num_ents, 'o'
+            else:
+                return -1, 'i'
+        else:
+            raise NotImplementedError
+
+    def forward(self, mention_emb_list, mention_scores, gt_actions,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
@@ -35,53 +64,48 @@ class UnboundedMemory(BaseMemory):
 
         action_logit_list = []
         action_list = []  # argmax actions
-        action_str = '<s>'
+        # action_str = '<s>'
+        first_overwrite = True
 
-        for ment_idx, (ment_emb, (span_start, span_end), (gt_cell_idx, gt_action_str)) in \
-                enumerate(zip(mention_emb_list, mentions, actions)):
-            width_bucket = self.get_mention_width_bucket(span_end - span_start)
-            width_embedding = self.width_embeddings(torch.tensor(width_bucket).long().cuda())
-            last_action_emb = self.get_last_action_emb(action_str)
-            query_vector = self.query_projector(
-                torch.cat([ment_emb, last_action_emb, width_embedding], dim=0))
+        for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
+                enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
+            # width_bucket = self.get_mention_width_bucket(span_end - span_start)
+            # width_embedding = self.width_embeddings(torch.tensor(width_bucket).long().cuda())
+            # last_action_emb = self.get_last_action_emb(action_str)
+            # query_vector = self.query_projector(
+            #     torch.cat([ment_emb, last_action_emb, width_embedding], dim=0))
+            query_vector = ment_emb
 
-            coref_new_scores = self.predict_action(
-                query_vector, mem_vectors, last_ment_vectors,
+            coref_new_scores, overwrite_ign_scores = self.predict_action(
+                query_vector, ment_score, mem_vectors, last_ment_vectors,
                 ment_idx, ent_counter, last_mention_idx)
 
-            action_logit_list.append(coref_new_scores)
+            action_logit_list.append((coref_new_scores, overwrite_ign_scores))
+            pred_cell_idx, pred_action_str = self.interpret_scores(
+                coref_new_scores, overwrite_ign_scores, first_overwrite)
 
-            if ment_idx == 0:
+            if self.training or teacher_forcing:
+                # Training - Operate over the ground truth
+                action_str = gt_action_str
+                cell_idx = gt_cell_idx
+            else:
+                # Inference time
+                action_str = pred_action_str
+                cell_idx = pred_cell_idx
+
+            if first_overwrite and action_str == 'o':
+                first_overwrite = False
                 # We start with a single empty memory cell
                 mem_vectors = torch.unsqueeze(query_vector, dim=0)
                 last_ment_vectors = torch.unsqueeze(query_vector, dim=0)
                 ent_counter = torch.tensor([1.0]).cuda()
-                last_mention_idx[0] = 0
-
+                last_mention_idx[0] = ment_idx
                 action_list.append((0, 'o'))
             else:
-                pred_max_idx = torch.argmax(coref_new_scores).item()
-                num_ents = coref_new_scores.shape[0] - 1
-
-                if pred_max_idx == num_ents:
-                    pred_action_str = 'o'
-                    pred_cell_idx = num_ents
-                else:
-                    pred_action_str = 'c'
-                    pred_cell_idx = pred_max_idx
-
                 # During training this records the next actions  - during testing it records the
                 # predicted sequence of actions
+                num_ents = coref_new_scores.shape[0] - 1
                 action_list.append((pred_cell_idx, pred_action_str))
-
-                if self.training or teacher_forcing:
-                    # Training - Operate over the ground truth
-                    action_str = gt_action_str
-                    cell_idx = gt_cell_idx
-                else:
-                    # Inference time
-                    action_str = pred_action_str
-                    cell_idx = pred_cell_idx
 
                 # Update the memory
                 rep_query_vector = query_vector.repeat(num_ents, 1)  # M x H
