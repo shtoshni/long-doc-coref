@@ -6,33 +6,32 @@ class LRUMemory(BaseFixedMemory):
     def __init__(self, **kwargs):
         super(LRUMemory, self).__init__(**kwargs)
 
-    def predict_action(self, query_vector, mem_vectors, last_ment_vectors,
+    def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
                        ment_idx, ent_counter, last_mention_idx, lru_list):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
         counter_embs = self.get_counter_emb(ent_counter)
 
-        coref_new_scores, coref_new_log_prob = self.get_coref_new_log_prob(
-            query_vector, mem_vectors, last_ment_vectors,
+        coref_new_scores = self.get_coref_new_log_prob(
+            query_vector, ment_score, mem_vectors, last_ment_vectors,
             ent_counter, distance_embs, counter_embs)
 
         # Overwrite vs Ignore
         lru_cell = lru_list[0]
         mem_fert_input = torch.cat([mem_vectors[lru_cell, :], distance_embs[lru_cell, :],
                                     counter_embs[lru_cell, :]], dim=0)
-        # ment_fert_score = self.ment_fert_mlp(query_vector)
-        # mem_fert_score = self.mem_fert_mlp(mem_fert_input)
-        # over_ign_score = torch.cat([mem_fert_score, ment_fert_score], dim=0)
-
-        ment_distance_emb = torch.squeeze(self.distance_embeddings(torch.tensor([0]).cuda()), dim=0)
-        ment_counter_emb = torch.squeeze(self.counter_embeddings(torch.tensor([0]).cuda()), dim=0)
-        ment_fert_input = torch.cat([query_vector, ment_distance_emb, ment_counter_emb], dim=0)
-
-        fert_input = torch.stack([mem_fert_input, ment_fert_input], dim=0)
-        over_ign_score = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
+        # ment_distance_emb = torch.squeeze(self.distance_embeddings(torch.tensor([0]).cuda()), dim=0)
+        # ment_counter_emb = torch.squeeze(self.counter_embeddings(torch.tensor([0]).cuda()), dim=0)
+        # ment_fert_input = torch.cat([query_vector, ment_distance_emb, ment_counter_emb], dim=0)
+        #
+        # fert_input = torch.stack([mem_fert_input, ment_fert_input], dim=0)
+        # over_ign_score = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
+        mem_fert = self.fert_mlp(mem_fert_input)
+        ment_fert = self.ment_fert_mlp(query_vector) - ment_score
+        over_ign_score = torch.cat([mem_fert, ment_fert], dim=0)
 
         return coref_new_scores, over_ign_score
 
-    def forward(self, mention_emb_list, actions, mentions, teacher_forcing=False):
+    def forward(self, mention_emb_list, mention_scores, gt_actions, teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
         last_ment_vectors = torch.zeros_like(mem_vectors)
@@ -43,20 +42,16 @@ class LRUMemory(BaseFixedMemory):
 
         action_logit_list = []
         action_list = []  # argmax actions
-        last_action_str = '<s>'
+        # last_action_str = '<s>'
 
-        for ment_idx, (ment_emb, (span_start, span_end), (gt_cell_idx, gt_action_str)) in \
-                enumerate(zip(mention_emb_list, mentions, actions)):
-            width_bucket = self.get_mention_width_bucket(span_end - span_start)
-            width_embedding = self.width_embeddings(torch.tensor(width_bucket).long().cuda())
-
-            # Action string from last step - At the start it's a dummy start symbol
-            last_action_emb = self.get_last_action_emb(last_action_str)
-            query_vector = self.query_projector(
-                torch.cat([ment_emb, last_action_emb, width_embedding], dim=0))
-
+        for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
+                enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
+            # last_action_emb = self.get_last_action_emb(last_action_str)
+            # query_vector = self.query_projector(
+            #     torch.cat([ment_emb, last_action_emb, width_embedding], dim=0))
+            query_vector = ment_emb
             coref_new_scores, over_ign_score = self.predict_action(
-                query_vector, mem_vectors, last_ment_vectors,
+                query_vector, ment_score, mem_vectors, last_ment_vectors,
                 ment_idx, ent_counter, last_mention_idx, lru_list)
 
             coref_new_max_idx = torch.argmax(coref_new_scores).item()
@@ -132,6 +127,6 @@ class LRUMemory(BaseFixedMemory):
                 lru_list.append(cell_idx)
 
             # Update last action
-            last_action_str = action_str
+            # last_action_str = action_str
 
         return action_logit_list, action_list

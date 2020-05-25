@@ -14,6 +14,9 @@ class BaseFixedMemory(BaseMemory):
         self.fert_mlp = MLP(input_size=self.mem_size + 2 * self.emb_size,
                             hidden_size=self.mlp_size, output_size=1, num_hidden_layers=self.mlp_depth,
                             bias=True, drop_module=self.drop_module)
+        self.ment_fert_mlp = MLP(input_size=self.mem_size, hidden_size=self.mlp_size, output_size=1,
+                                 num_hidden_layers=self.mlp_depth,
+                                 bias=True, drop_module=self.drop_module)
         # self.ment_fert_mlp = MLP(input_size=self.mem_size, hidden_size=self.mlp_size,
         #                          output_size=1, num_layers=self.mlp_depth, bias=True,
         #                          drop_module=self.drop_module)

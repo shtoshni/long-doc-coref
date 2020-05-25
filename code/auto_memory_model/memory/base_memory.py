@@ -36,7 +36,7 @@ class BaseMemory(nn.Module):
                 hidden_size=self.mem_size)
 
         # CHANGE THIS PART
-        # self.query_projector = nn.Linear(self.hsize + 2 * self.emb_size, self.mem_size)
+        # self.query_projector = nn.Linear(self.hsize + self.emb_size, self.mem_size)
 
         self.mem_coref_mlp = MLP(3 * self.mem_size + 2 * self.emb_size, self.mlp_size, 1,
                                  num_hidden_layers=coref_mlp_depth, bias=True, drop_module=drop_module)
@@ -47,41 +47,40 @@ class BaseMemory(nn.Module):
                                       num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
 
         self.last_action_emb = nn.Embedding(4, self.emb_size)
-        self.distance_embeddings = nn.Embedding(11, self.emb_size)
-        # self.width_embeddings = nn.Embedding(30, self.emb_size)
-        self.counter_embeddings = nn.Embedding(11, self.emb_size)
+        self.distance_embeddings = nn.Embedding(10, self.emb_size)
+        self.counter_embeddings = nn.Embedding(10, self.emb_size)
 
     @staticmethod
     def get_distance_bucket(dist):
         assert (dist >= 0)
-        if dist < 5:
-            return dist + 1
+        if dist <= 4:
+            return dist
         elif 5 <= dist <= 7:
-            return 6
+            return 5
         elif 8 <= dist <= 15:
-            return 7
+            return 6
         elif 16 <= dist <= 31:
-            return 8
+            return 7
         elif 32 <= dist <= 63:
-            return 9
+            return 8
 
-        return 10
+        return 9
 
     @staticmethod
     def get_counter_bucket(count):
         assert (count >= 0)
-        if count <= 5:
+        if count <= 4:
             return count
-        elif 5 < count <= 7:
-            return 6
+        elif 5 <= count <= 7:
+            return 5
         elif 8 <= count <= 15:
-            return 7
+            return 6
         elif 16 <= count <= 31:
-            return 8
+            return 7
         elif 32 <= count <= 63:
-            return 9
+            return 8
 
-        return 10
+        return 9
 
     def get_distance_emb(self, ment_idx, last_mention_idx):
         distance_buckets = [self.get_distance_bucket(ment_idx - ent_ment_idx)
@@ -105,8 +104,8 @@ class BaseMemory(nn.Module):
         cell_mask = (ent_counter > 0.0).float().cuda()
         return cell_mask
 
-    def get_coref_new_not_log_prob(self, query_vector, mem_vectors, last_ment_vectors,
-                                   ent_counter, distance_embs, counter_embs):
+    def get_coref_new_log_prob(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
+                               ent_counter, distance_embs, counter_embs):
         # Repeat the query vector for comparison against all cells
         num_cells = mem_vectors.shape[0]
         rep_query_vector = query_vector.repeat(num_cells, 1)  # M x H
@@ -115,7 +114,7 @@ class BaseMemory(nn.Module):
         pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector,
                               distance_embs, counter_embs], dim=-1)
         pair_score = self.mem_coref_mlp(pair_vec)
-        coref_score = torch.squeeze(pair_score, dim=-1)  # M
+        coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
 
         if self.use_last_mention:
             last_ment_vec = torch.cat(
@@ -129,8 +128,8 @@ class BaseMemory(nn.Module):
         coref_new_scores = torch.cat(([coref_score, torch.tensor([0.0]).cuda()]), dim=0)
 
         coref_new_not_scores = coref_new_scores * coref_new_mask + (1 - coref_new_mask) * (-1e4)
-        coref_new_not_log_prob = torch.nn.functional.log_softmax(coref_new_scores, dim=0)
-        return coref_new_not_scores, coref_new_not_log_prob
+        # coref_new_not_log_prob = torch.nn.functional.log_softmax(coref_new_scores, dim=0)
+        return coref_new_not_scores  #, coref_new_not_log_prob
 
     def forward(self, mention_emb_list, actions, mentions, teacher_forcing=False):
         pass

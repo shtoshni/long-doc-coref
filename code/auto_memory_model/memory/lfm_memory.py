@@ -11,29 +11,32 @@ class LearnedFixedMemory(BaseFixedMemory):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
         counter_embs = self.get_counter_emb(ent_counter)
 
-        coref_new_not_scores, coref_new_not_log_prob = self.get_coref_new_not_log_prob(
-            query_vector, mem_vectors, last_ment_vectors,
+        coref_new_scores = self.get_coref_new_log_prob(
+            query_vector, ment_score, mem_vectors, last_ment_vectors,
             ent_counter, distance_embs, counter_embs)
         # Fertility Score
-        # Memory + Mention fertility input
+        # # Memory + Mention fertility input
+        # mem_fert_input = torch.cat([mem_vectors, distance_embs, counter_embs], dim=-1)
+        # # Mention fertility input
+        # ment_distance_emb = torch.squeeze(self.distance_embeddings(torch.tensor([0]).cuda()), dim=0)
+        # ment_counter_emb = torch.squeeze(self.counter_embeddings(torch.tensor([0]).cuda()), dim=0)
+        # ment_fert_input = torch.unsqueeze(
+        #     torch.cat([query_vector, ment_distance_emb, ment_counter_emb], dim=0), dim=0)
+        # # Fertility scores
+        # fert_input = torch.cat([mem_fert_input, ment_fert_input], dim=0)
+        # fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
+        # fert_scores[self.num_cells] -= ment_score
+
         mem_fert_input = torch.cat([mem_vectors, distance_embs, counter_embs], dim=-1)
-        # Mention fertility input
-        ment_distance_emb = torch.squeeze(self.distance_embeddings(torch.tensor([0]).cuda()), dim=0)
-        ment_counter_emb = torch.squeeze(self.counter_embeddings(torch.tensor([0]).cuda()), dim=0)
-        ment_fert_input = torch.unsqueeze(
-            torch.cat([query_vector, ment_distance_emb, ment_counter_emb], dim=0), dim=0)
-        # Fertility scores
-        fert_input = torch.cat([mem_fert_input, ment_fert_input], dim=0)
-        fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
+        mem_fert = torch.squeeze(self.fert_mlp(mem_fert_input), dim=-1)
+
+        ment_fert = self.ment_fert_mlp(query_vector) - ment_score
+        fert_scores = torch.cat([mem_fert, ment_fert], dim=0)
 
         overwrite_ign_mask = self.get_overwrite_ign_mask(ent_counter)
         overwrite_ign_scores = fert_scores * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
-        # overwrite_ign_log_prob = torch.nn.functional.log_softmax(overwrite_ign_scores, dim=0)
 
-        # norm_overwrite_ign_log_prob = (coref_new_log_prob[self.num_cells] + overwrite_ign_log_prob)
-        # all_log_prob = torch.cat([coref_new_log_prob[:self.num_cells],
-        #                           norm_overwrite_ign_log_prob], dim=0)
-        return coref_new_not_scores, overwrite_ign_scores
+        return coref_new_scores, overwrite_ign_scores
 
     def interpret_scores(self, coref_new_not_scores, overwrite_ign_scores):
         pred_max_idx = torch.argmax(coref_new_not_scores).item()
@@ -49,11 +52,8 @@ class LearnedFixedMemory(BaseFixedMemory):
                 return -1, 'i'
         else:
             raise NotImplementedError
-        # else:
-        #     # Not a mention
-        #     return -1, 'n'
 
-    def forward(self, mentions, mention_emb_list, mention_scores, actions,
+    def forward(self, mention_emb_list, mention_scores, gt_actions,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
@@ -64,10 +64,10 @@ class LearnedFixedMemory(BaseFixedMemory):
 
         action_logit_list = []
         action_list = []  # argmax actions
-        action_str = '<s>'
+        # action_str = '<s>'
 
-        for ment_idx, ((span_start, span_end), ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
-                enumerate(zip(mentions, mention_emb_list, mention_scores, actions)):
+        for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
+                enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
             # last_action_emb = self.get_last_action_emb(action_str)
             # query_vector = self.query_projector(
             #     torch.cat([ment_emb, last_action_emb], dim=0))

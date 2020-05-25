@@ -26,6 +26,7 @@ class LearnedFixedMemController(BaseController):
 
     def get_actions(self, pred_mentions, gt_clusters):
         # Useful data structures
+        pred_mentions = [tuple(mention) for mention in pred_mentions]
         mention_to_cluster = get_mention_to_cluster(gt_clusters)
         possible_clusters = []
         # for mention in pred_mentions:
@@ -34,12 +35,22 @@ class LearnedFixedMemController(BaseController):
         cell_to_cluster = {}
         cell_to_last_used = [0 for cell in range(self.num_cells)]  # Initialize last usage of cell
         cluster_to_cell = {}
+
         # Initialize with all the mentions
-        cluster_to_rem_mentions = [len(cluster) for cluster in gt_clusters]
+        # cluster_to_rem_mentions = [len(cluster) for cluster in gt_clusters]
+
+        cluster_to_rem_mentions = []  # [len(cluster) for cluster in gt_clusters]
+        set_pred_mentions = set(pred_mentions)
+        for cluster in gt_clusters:
+            mentions_covered_in_preds = 0
+            for mention in cluster:
+                if tuple(mention) in set_pred_mentions:
+                    mentions_covered_in_preds += 1
+
+            cluster_to_rem_mentions.append(mentions_covered_in_preds)
 
         for mention in pred_mentions:
             used_cell_idx = None
-            mention = tuple(mention)
             if mention not in mention_to_cluster:
                 # Not a mention
                 actions.append((-1, 'i'))
@@ -142,7 +153,7 @@ class LearnedFixedMemController(BaseController):
             self.get_mention_embs_and_actions(example)
 
         action_prob_list, action_list = self.memory_net(
-            pred_mentions, mention_emb_list, mention_score_list, gt_actions,
+            mention_emb_list, mention_score_list, gt_actions,
             teacher_forcing=teacher_forcing)  # , example[""])
 
         loss = {}

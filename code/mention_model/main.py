@@ -88,6 +88,9 @@ def main():
     else:
         args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
 
+    # if args.dataset == 'ontonotes':
+    #     args.pretrained_model = path.join(
+    #         args.pretrained_mention_model_dir, f'mention_ontonotes_{args.model_size}_{args.ment_emb}.pt')
     # Log directory for Tensorflow Summary
     log_dir = path.join(model_dir, "logs")
     if not path.exists(log_dir):

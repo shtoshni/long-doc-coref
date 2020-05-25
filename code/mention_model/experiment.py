@@ -34,6 +34,7 @@ class Experiment:
         # Prepare data info
         self.train_examples, self.dev_examples, self.test_examples \
             = load_data(data_dir, max_segment_len, dataset=dataset)
+        # self.dev_examples = self.dev_examples[:20]
         if num_train_docs is not None:
             self.train_examples = self.train_examples[:num_train_docs]
         self.data_iter_map = {"train": self.train_examples,
@@ -60,8 +61,11 @@ class Experiment:
 
         if not eval:
             if self.pretrained_model is not None:
+                model_state_dict = torch.load(self.pretrained_model)
+                print(model_state_dict.keys())
+                self.model.load_state_dict(model_state_dict, strict=False)
                 self.eval_model(split='valid')
-                self.eval_model(split='test')
+                # self.eval_model(split='test')
                 sys.exit()
             else:
                 self.train(max_epochs=max_epochs,
