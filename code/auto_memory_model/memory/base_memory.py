@@ -21,8 +21,8 @@ class BaseMemory(nn.Module):
 
         # self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, 'n': 3, '<s>': 4}
         # self.action_idx_to_str = ['c', 'o', 'i', 'n']
-        self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, 'n': 3, '<s>': 4}
-        self.action_idx_to_str = ['c', 'o', 'i', 'n']
+        self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, '<s>': 3}
+        self.action_idx_to_str = ['c', 'o', 'i']
 
         self.use_last_mention = use_last_mention
 
@@ -40,11 +40,13 @@ class BaseMemory(nn.Module):
 
         self.mem_coref_mlp = MLP(3 * self.mem_size + 2 * self.emb_size, self.mlp_size, 1,
                                  num_hidden_layers=coref_mlp_depth, bias=True, drop_module=drop_module)
+        # self.ment_or_not_mlp = MLP(self.mem_size, self.mlp_size, 1,
+        #                            num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
         if self.use_last_mention:
             self.ment_coref_mlp = MLP(3 * self.mem_size, self.mlp_size, 1,
                                       num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
 
-        self.last_action_emb = nn.Embedding(5, self.emb_size)
+        self.last_action_emb = nn.Embedding(4, self.emb_size)
         self.distance_embeddings = nn.Embedding(11, self.emb_size)
         # self.width_embeddings = nn.Embedding(30, self.emb_size)
         self.counter_embeddings = nn.Embedding(11, self.emb_size)
@@ -103,8 +105,8 @@ class BaseMemory(nn.Module):
         cell_mask = (ent_counter > 0.0).float().cuda()
         return cell_mask
 
-    def get_coref_new_not_log_prob(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
-                               ent_counter, distance_embs, counter_embs):
+    def get_coref_new_not_log_prob(self, query_vector, mem_vectors, last_ment_vectors,
+                                   ent_counter, distance_embs, counter_embs):
         # Repeat the query vector for comparison against all cells
         num_cells = mem_vectors.shape[0]
         rep_query_vector = query_vector.repeat(num_cells, 1)  # M x H
@@ -122,9 +124,9 @@ class BaseMemory(nn.Module):
             last_ment_score = torch.squeeze(self.ment_coref_mlp(last_ment_vec), dim=-1)
             coref_score = coref_score + last_ment_score  # M
 
-        coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0, 1.0]).cuda()], dim=0)
-        coref_new_scores = torch.cat(([coref_score, torch.tensor([0.0]).cuda(),
-                                       torch.tensor([ment_score]).cuda()]), dim=0)
+        coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0]).cuda()], dim=0)
+        # ment_or_not_ment_score = self.ment_or_not_mlp(query_vector)
+        coref_new_scores = torch.cat(([coref_score, torch.tensor([0.0]).cuda()]), dim=0)
 
         coref_new_not_scores = coref_new_scores * coref_new_mask + (1 - coref_new_mask) * (-1e4)
         coref_new_not_log_prob = torch.nn.functional.log_softmax(coref_new_scores, dim=0)

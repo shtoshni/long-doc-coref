@@ -269,11 +269,11 @@ class Experiment:
 
     def load_model(self, location):
         checkpoint = torch.load(location)
-        self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        self.model.load_state_dict(checkpoint['model'], strict=False)
         self.optimizer.load_state_dict(
-            checkpoint['optimizer_state_dict'])
+            checkpoint['optimizer'])
         self.optim_scheduler.load_state_dict(
-            checkpoint['scheduler_state_dict'])
+            checkpoint['scheduler'])
         self.train_info = checkpoint['train_info']
         torch.set_rng_state(checkpoint['rng_state'])
 
@@ -285,9 +285,9 @@ class Experiment:
                 del model_state_dict[key]
         torch.save({
             'train_info': self.train_info,
-            'model_state_dict': model_state_dict,
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.optim_scheduler.state_dict(),
+            'model': model_state_dict,
+            'optimizer': self.optimizer.state_dict(),
+            'scheduler': self.optim_scheduler.state_dict(),
             'rng_state': torch.get_rng_state(),
         }, location)
         logging.info("Model saved at: %s" % (location))

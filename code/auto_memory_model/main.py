@@ -40,12 +40,14 @@ def main():
                         help='Max segment length of BERT segments.')
 
     # Mention variables
-    parser.add_argument('-max_span_width', default=30, type=int,
+    parser.add_argument('-max_span_width', default=20, type=int,
                         help='Max span width.')
     parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'endpoint'],
                         type=str, help='If true use an RNN on top of mention embeddings.')
     parser.add_argument('-top_span_ratio', default=0.4, type=float,
                         help='Ratio of top spans proposed as mentions.')
+    parser.add_argument('-train_span_model', default=False, action="store_true",
+                        help="Whether to keep the mention detection model frozen or fine-tuned.")
 
     # Memory variables
     parser.add_argument('-mem_type', default='fixed_mem',
@@ -76,6 +78,8 @@ def main():
                         help='Batch size', default=1, type=int)
     parser.add_argument('-new_ent_wt', help='Weight of new entity term in coref loss',
                         default=1.0, type=float)
+    parser.add_argument('-ignore_wt', help='Weight of Ignore term in cross entropy loss',
+                        default=0.1, type=float)
     parser.add_argument('-over_loss_wt', help='Weight of overwrite loss',
                         default=0.1, type=float)
     parser.add_argument('-num_train_docs', default=None, type=int,
@@ -100,11 +104,13 @@ def main():
     # Get model directory name
     opt_dict = OrderedDict()
     # Only include important options in hash computation
-    imp_opts = ['model_size', 'max_segment_len', 'ment_emb', "doc_enc", 'top_span_ratio',  # Encoder params
+    imp_opts = ['model_size', 'max_segment_len',  # Encoder params
+                'ment_emb', "doc_enc", 'top_span_ratio', 'train_span_model',  # Mention model
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
                 'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
                 'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
-                'dataset', 'num_train_docs', 'cross_val_split', 'over_loss_wt',  "new_ent_wt",  # Training params
+                'ignore_wt', 'over_loss_wt',  "new_ent_wt",
+                'dataset', 'num_train_docs', 'cross_val_split',   # Training params
                 ]
     for key, val in vars(args).items():
         if key in imp_opts:

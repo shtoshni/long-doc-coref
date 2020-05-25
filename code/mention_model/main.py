@@ -47,7 +47,7 @@ def main():
                         help='Max span width', default=20, type=int)
     parser.add_argument('-mlp_depth', default=1, type=int,
                         help='Number of hidden layers in other MLPs')
-    parser.add_argument('-mlp_size', default=1024, type=int,
+    parser.add_argument('-mlp_size', default=1000, type=int,
                         help='MLP size used in the model')
 
     parser.add_argument('-cross_val_split', default=0, type=int,

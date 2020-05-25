@@ -6,12 +6,14 @@ from document_encoder.independent import IndependentDocEncoder
 from document_encoder.overlap import OverlapDocEncoder
 from auto_memory_model.utils import get_ordered_mentions
 from pytorch_utils.modules import MLP
+import numpy as np
 
 
 class BaseController(nn.Module):
     def __init__(self,
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
-                 ment_emb='endpoint', doc_enc='independent', mlp_size=1000, **kwargs):
+                 ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
+                 train_span_model=False, **kwargs):
         super(BaseController, self).__init__()
         self.max_span_width = max_span_width
         self.top_span_ratio = top_span_ratio
@@ -40,6 +42,16 @@ class BaseController(nn.Module):
         self.span_width_mlp = MLP(input_size=20, hidden_size=self.mlp_size,
                                   output_size=1, num_hidden_layers=1, bias=True,
                                   drop_module=self.drop_module)
+
+        if not train_span_model:
+            for param in self.mention_mlp.parameters():
+                param.requires_grad = False
+            for param in self.span_width_mlp.parameters():
+                param.requires_grad = False
+            for param in self.span_width_embeddings.parameters():
+                param.requires_grad = False
+            for param in self.span_width_prior_embeddings.parameters():
+                param.requires_grad = False
 
         self.memory_net = None
         self.loss_fn = {}
@@ -80,7 +92,7 @@ class BaseController(nn.Module):
         mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
 
         span_width_idx = cand_ends - cand_starts
-        span_width_embs = self.span_width_embeddings(span_width_idx)
+        span_width_embs = self.span_width_prior_embeddings(span_width_idx)
         width_scores = torch.squeeze(self.span_width_mlp(span_width_embs), dim=-1)
 
         mention_logits += width_scores
@@ -117,7 +129,7 @@ class BaseController(nn.Module):
         topk_indices = torch.topk(mention_scores, k)[1]
 
         topk_starts = filt_cand_starts[topk_indices]
-        topk_ends = filt_cand_starts[topk_indices]
+        topk_ends = filt_cand_ends[topk_indices]
         topk_scores = mention_scores[topk_indices]
         return topk_starts, topk_ends, topk_scores
 
@@ -137,10 +149,36 @@ class BaseController(nn.Module):
         pred_ends = torch.tensor(pred_ends).cuda()
 
         gt_actions = self.get_actions(pred_mentions, example["clusters"])
-
         mention_embs = self.get_span_embeddings(
             encoded_doc, pred_starts, pred_ends)
         mention_emb_list = torch.unbind(mention_embs, dim=0)
+
+        # if self.training:
+        #     # Subsample from non-mentions
+        #     sub_gt_actions = list(gt_actions)
+        #     sub_mention_emb_list = list(mention_emb_list)
+        #     sub_pred_mentions = list(pred_mentions)
+        #     sub_pred_scores =  list(pred_scores)
+        #
+        #     rand_fl_list = list(np.random.random(len(gt_actions)))
+        #     for gt_action, mention_emb, pred_mention, pred_score, rand_fl in zip(
+        #             gt_actions, mention_emb_list, pred_mentions, pred_scores, rand_fl_list):
+        #         add_instance = True
+        #         if gt_action[1] == 'n':
+        #             if rand_fl > 0.2:
+        #                 add_instance = False
+        #
+        #         if add_instance:
+        #             sub_gt_actions.append(gt_action)
+        #             sub_mention_emb_list.append(mention_emb)
+        #             sub_pred_mentions.append(pred_mention)
+        #             sub_pred_scores.append(pred_score)
+        #
+        #     gt_actions = sub_gt_actions
+        #     mention_emb_list = sub_mention_emb_list
+        #     pred_mentions = sub_pred_mentions
+        #     pred_scores = sub_pred_scores
+
         # mention_score_list = torch.unbind(pred_scores, dim=0)
         return gt_mentions, pred_mentions, gt_actions, mention_emb_list, pred_scores
 

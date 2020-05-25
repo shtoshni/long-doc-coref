@@ -29,7 +29,7 @@ class Controller(BaseController):
         mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
 
         span_width_idx = cand_ends - cand_starts
-        span_width_embs = self.span_width_embeddings(span_width_idx)
+        span_width_embs = self.span_width_prior_embeddings(span_width_idx)
         width_scores = torch.squeeze(self.span_width_mlp(span_width_embs), dim=-1)
 
         mention_logits += width_scores

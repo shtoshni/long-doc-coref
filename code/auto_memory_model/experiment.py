@@ -102,7 +102,8 @@ class Experiment:
             if path.exists(self.pretrained_mention_model):
                 print("Found pretrained model!!")
                 checkpoint = torch.load(self.pretrained_mention_model)
-                self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                print(checkpoint['model'].keys())
+                self.model.load_state_dict(checkpoint['model'], strict=False)
         else:
             logging.info('Loading previous model: %s' % (self.model_path))
             # Load model
@@ -128,13 +129,13 @@ class Experiment:
             np.random.shuffle(self.train_examples)
             batch_loss = 0
             errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0), ("WO", 0),
-                                  ("FL", 0), ("C", 0), ("WM", 0), ("CM", 0)])
+                                  ("FL", 0), ("C", 0)])#, ("WM", 0), ("CM", 0)])
             for example in self.train_examples:
                 self.train_info['global_steps'] += 1
                 loss, pred_action_list, pred_mentions, gt_actions, gt_mentions = model(example)
-                batch_errors = classify_errors(pred_action_list, gt_actions)
-                for key in errors:
-                    errors[key] += batch_errors[key]
+                # batch_errors = classify_errors(pred_action_list, gt_actions)
+                # for key in errors:
+                #     errors[key] += batch_errors[key]
 
                 total_loss = loss['total']
                 batch_loss += total_loss.item()
@@ -157,7 +158,7 @@ class Experiment:
                     print(example["doc_key"], '{:.3f}'.format(total_loss.item()))
 
             sys.stdout.flush()
-            logging.info(errors)
+            # logging.info(errors)
             # Update epochs done
             self.train_info['epoch'] = epoch + 1
 
@@ -198,7 +199,7 @@ class Experiment:
         model = self.model
         model.eval()
         errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0),
-                              ("WO", 0), ("FL", 0), ("C", 0), ("WM", 0), ("CM", 0)])
+                              ("WO", 0), ("FL", 0), ("C", 0)])#, ("CM", 0), ("WM", 0)])
         batch_loss = 0
         pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
         corr_actions, total_actions = 0, 0
@@ -271,7 +272,7 @@ class Experiment:
                     num_gt_clusters += len(gold_clusters)
                     num_pred_clusters += len(predicted_clusters)
 
-                    oracle_clusters = action_sequences_to_clusters(gt_actions, gt_mentions)
+                    oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
                     oracle_clusters, mention_to_oracle = \
                         mention_to_cluster(oracle_clusters,
                                            threshold=self.cluster_threshold)

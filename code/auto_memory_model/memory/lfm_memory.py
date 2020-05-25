@@ -12,7 +12,7 @@ class LearnedFixedMemory(BaseFixedMemory):
         counter_embs = self.get_counter_emb(ent_counter)
 
         coref_new_not_scores, coref_new_not_log_prob = self.get_coref_new_not_log_prob(
-            query_vector, ment_score, mem_vectors, last_ment_vectors,
+            query_vector, mem_vectors, last_ment_vectors,
             ent_counter, distance_embs, counter_embs)
         # Fertility Score
         # Memory + Mention fertility input
@@ -48,8 +48,10 @@ class LearnedFixedMemory(BaseFixedMemory):
             else:
                 return -1, 'i'
         else:
-            # Not a mention
-            return -1, 'n'
+            raise NotImplementedError
+        # else:
+        #     # Not a mention
+        #     return -1, 'n'
 
     def forward(self, mentions, mention_emb_list, mention_scores, actions,
                 teacher_forcing=False):

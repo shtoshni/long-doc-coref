@@ -7,7 +7,7 @@ from auto_memory_model.utils import get_mention_to_cluster, get_ordered_mentions
 
 
 class LearnedFixedMemController(BaseController):
-    def __init__(self, num_cells=10, over_loss_wt=0.1, new_ent_wt=1.0, **kwargs):
+    def __init__(self, num_cells=10, over_loss_wt=0.1, new_ent_wt=1.0, ignore_wt=1.0, **kwargs):
         super(LearnedFixedMemController, self).__init__(**kwargs)
         self.memory_net = LearnedFixedMemory(
             num_cells=num_cells, hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 20,
@@ -15,18 +15,20 @@ class LearnedFixedMemController(BaseController):
         self.num_cells = num_cells
         # Loss setup
         self.new_ent_wt = new_ent_wt
+        self.ignore_wt = ignore_wt
         self.over_loss_wt = over_loss_wt
         # Set loss functions
         self.loss_fn = {}
-        coref_loss_wts = torch.tensor([1.0] * self.num_cells + [self.new_ent_wt] + [1.0]).cuda()
+        coref_loss_wts = torch.tensor([1.0] * self.num_cells + [self.new_ent_wt]).cuda()
         self.loss_fn['coref'] = nn.CrossEntropyLoss(weight=coref_loss_wts, reduction='sum')
-        over_loss_wts = torch.ones(self.num_cells + 1).cuda()
+        over_loss_wts = torch.tensor([1.0] * self.num_cells + [self.ignore_wt]).cuda()
         self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum')
 
     def get_actions(self, pred_mentions, gt_clusters):
         # Useful data structures
         mention_to_cluster = get_mention_to_cluster(gt_clusters)
-        ordered_mentions = get_ordered_mentions(gt_clusters)
+        possible_clusters = []
+        # for mention in pred_mentions:
 
         actions = []
         cell_to_cluster = {}
@@ -40,7 +42,7 @@ class LearnedFixedMemController(BaseController):
             mention = tuple(mention)
             if mention not in mention_to_cluster:
                 # Not a mention
-                actions.append((-1, 'n'))
+                actions.append((-1, 'i'))
                 # actions.append((-1, 'i'))
             else:
                 mention_cluster = mention_to_cluster[tuple(mention)]
@@ -126,7 +128,9 @@ class LearnedFixedMemController(BaseController):
             elif action_str == 'o' or action_str == 'i':
                 action_indices.append(self.num_cells)
             else:
-                action_indices.append(self.num_cells + 1)
+                raise NotImplementedError
+            # else:
+            #     action_indices.append(self.num_cells + 1)
 
         return torch.tensor(action_indices).cuda()
 

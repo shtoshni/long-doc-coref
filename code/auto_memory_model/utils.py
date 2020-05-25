@@ -23,8 +23,9 @@ def action_sequences_to_clusters(actions, mentions):
 
     for mention, (cell_idx, action_type) in zip(mentions, actions):
         if action_type == 'i':
-            # Singleton
-            clusters.append([mention])
+            # Ignore the mention
+            # clusters.append([mention])
+            continue
         elif action_type == 'c':
             cell_to_clusters[cell_idx].append(mention)
         elif action_type == 'o':
@@ -47,15 +48,15 @@ def classify_errors(pred_action_list, gt_action_list):
     # FN - Overwrite or Ignore when there's a coref decision
     decisions = {"WL": 0, "FN": 0,
                  "WF": 0, "WO": 0,
-                 "FL": 0, "C": 0,
-                 "WM": 0, "CM": 0}
+                 "FL": 0, "C": 0}#,
+                 # "WM": 0, "CM": 0}
     for cur_pred_action, cur_gt_action in zip(pred_action_list, gt_action_list):
         pred_tuple, gt_tuple = tuple(cur_pred_action), tuple(cur_gt_action)
         # (_, pred_action), (_, gt_action) = pred_tuple, gt_tuple
         pred_action = pred_tuple[1]
         gt_action = gt_tuple[1]
 
-        if pred_tuple == gt_tuple:
+        if gt_action in ['c', 'o', 'i'] and pred_tuple == gt_tuple:
             decisions['C'] += 1
         elif gt_action == 'c':
             if pred_action == 'c':
@@ -80,10 +81,10 @@ def classify_errors(pred_action_list, gt_action_list):
                 decisions['FL'] += 1
             else:
                 decisions['C'] += 1
-        elif gt_action == "n":
-            if pred_action == "n":
-                decisions['CM'] += 1
-            else:
-                decisions['WM'] += 1
+        # elif gt_action == "n":
+        #     if pred_action == "n":
+        #         decisions['CM'] += 1
+        #     else:
+        #         decisions['WM'] += 1
 
     return decisions
