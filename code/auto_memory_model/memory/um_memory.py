@@ -14,7 +14,7 @@ class UnboundedMemory(BaseMemory):
         """Initialize the memory to null with only 1 memory cell to begin with."""
         mem = torch.zeros(1, self.mem_size).cuda()
         ent_counter = torch.tensor([0.0]).cuda()
-        last_mention_idx = [0]
+        last_mention_idx = torch.zeros(1).long().cuda()
         return mem, ent_counter, last_mention_idx
 
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
@@ -146,6 +146,7 @@ class UnboundedMemory(BaseMemory):
                     last_ment_vectors = torch.cat([last_ment_vectors, torch.unsqueeze(query_vector, dim=0)], dim=0)
 
                     ent_counter = torch.cat([ent_counter, torch.tensor([1.0]).cuda()], dim=0)
-                    last_mention_idx.append(ment_idx)
+                    last_mention_idx = torch.cat([last_mention_idx, torch.tensor([ment_idx]).cuda()], dim=0)
+                    # last_mention_idx.append(ment_idx)
 
         return action_logit_list, action_list
