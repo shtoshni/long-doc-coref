@@ -86,7 +86,7 @@ def main():
                         help='Number of training docs.')
     parser.add_argument('-sample_ignores', help='Sample ignores during training',
                         default=1.0, type=float)
-    parser.add_argument('-dropout_rate', default=0.5, type=float,
+    parser.add_argument('-dropout_rate', default=0.3, type=float,
                         help='Dropout rate')
     parser.add_argument('-max_epochs',
                         help='Maximum number of epochs', default=30, type=int)

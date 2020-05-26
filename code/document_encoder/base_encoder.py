@@ -8,18 +8,17 @@ from transformers import BertModel, BertTokenizer
 class BaseDocEncoder(nn.Module):
     def __init__(self, model_size='base', pretrained_bert_dir=None, **kwargs):
         super(BaseDocEncoder, self).__init__()
-        self.last_layers = 1
+        # self.last_layers = 1
 
         # Summary Writer
         if pretrained_bert_dir:
             self.bert = BertModel.from_pretrained(
-                path.join(pretrained_bert_dir, "spanbert_{}".format(model_size)), output_hidden_states=True)
+                path.join(pretrained_bert_dir, "spanbert_{}".format(model_size)), output_hidden_states=False)
         else:
             bert_model_name = 'bert-' + model_size + '-cased'
-            self.bert = BertModel.from_pretrained(
-                bert_model_name, output_hidden_states=True)
+            self.bert = BertModel.from_pretrained(bert_model_name)
 
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased', output_hidden_states=False)
         self.pad_token = 0
 
         for param in self.bert.parameters():
@@ -27,4 +26,5 @@ class BaseDocEncoder(nn.Module):
             param.requires_grad = False
 
         bert_hidden_size = self.bert.config.hidden_size
-        self.hsize = self.last_layers * bert_hidden_size
+        # self.hsize = self.last_layers * bert_hidden_size
+        self.hsize = bert_hidden_size
