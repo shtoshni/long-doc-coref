@@ -30,15 +30,15 @@ class LRUController(LearnedFixedMemController):
 
         # Initialize with all the mentions
         # cluster_to_rem_mentions = [len(cluster) for cluster in clusters]
-        cluster_to_rem_mentions = []  # [len(cluster) for cluster in gt_clusters]
-        set_pred_mentions = set(pred_mentions)
-        for cluster in gt_clusters:
-            mentions_covered_in_preds = 0
-            for mention in cluster:
-                if tuple(mention) in set_pred_mentions:
-                    mentions_covered_in_preds += 1
-
-            cluster_to_rem_mentions.append(mentions_covered_in_preds)
+        cluster_to_rem_mentions = [len(cluster) for cluster in gt_clusters]
+        # set_pred_mentions = set(pred_mentions)
+        # for cluster in gt_clusters:
+        #     mentions_covered_in_preds = 0
+        #     for mention in cluster:
+        #         if tuple(mention) in set_pred_mentions:
+        #             mentions_covered_in_preds += 1
+        #
+        #     cluster_to_rem_mentions.append(mentions_covered_in_preds)
 
         # non_optimal_overwrites = 0
         # total_overwrites = 0
@@ -84,7 +84,7 @@ class LRUController(LearnedFixedMemController):
                     # Remaining mentions in least recently used cell
                     lru_remaining_mentions = cell_info[0][0]
 
-                    if cur_rem_mentions > lru_remaining_mentions:
+                    if cur_rem_mentions >= lru_remaining_mentions:
                         used_cell_idx = cell_info[0][2]  # Get the cell index
 
                     if used_cell_idx is None:

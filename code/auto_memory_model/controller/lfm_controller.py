@@ -37,15 +37,15 @@ class LearnedFixedMemController(BaseController):
         # Initialize with all the mentions
         # cluster_to_rem_mentions = [len(cluster) for cluster in gt_clusters]
 
-        cluster_to_rem_mentions = []  # [len(cluster) for cluster in gt_clusters]
-        set_pred_mentions = set(pred_mentions)
-        for cluster in gt_clusters:
-            mentions_covered_in_preds = 0
-            for mention in cluster:
-                if tuple(mention) in set_pred_mentions:
-                    mentions_covered_in_preds += 1
-
-            cluster_to_rem_mentions.append(mentions_covered_in_preds)
+        cluster_to_rem_mentions = [len(cluster) for cluster in gt_clusters]
+        # set_pred_mentions = set(pred_mentions)
+        # for cluster in gt_clusters:
+        #     mentions_covered_in_preds = 0
+        #     for mention in cluster:
+        #         if tuple(mention) in set_pred_mentions:
+        #             mentions_covered_in_preds += 1
+        #
+        #     cluster_to_rem_mentions.append(mentions_covered_in_preds)
 
         for mention in pred_mentions:
             used_cell_idx = None
@@ -83,7 +83,7 @@ class LearnedFixedMemController(BaseController):
                     cell_info = sorted(cell_info, key=lambda x: x[0] - 1e-10 * x[1])
                     min_remaining_mentions = cell_info[0][0]
 
-                    if cur_rem_mentions > min_remaining_mentions:
+                    if cur_rem_mentions >= min_remaining_mentions:
                         used_cell_idx = cell_info[0][2]  # Get the cell index
 
                     if used_cell_idx is None:
