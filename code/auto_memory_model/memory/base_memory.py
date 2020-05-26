@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from pytorch_utils.modules import MLP
+import math
 
 
 class BaseMemory(nn.Module):
@@ -51,20 +52,11 @@ class BaseMemory(nn.Module):
         self.counter_embeddings = nn.Embedding(10, self.emb_size)
 
     @staticmethod
-    def get_distance_bucket(dist):
-        assert (dist >= 0)
-        if dist <= 4:
-            return dist
-        elif 5 <= dist <= 7:
-            return 5
-        elif 8 <= dist <= 15:
-            return 6
-        elif 16 <= dist <= 31:
-            return 7
-        elif 32 <= dist <= 63:
-            return 8
-
-        return 9
+    def get_distance_bucket(distances):
+        logspace_idx = (torch.floor(torch.log(distances.float())) / math.log(2)).int() + 3
+        use_identity = (distances <= 4).int()
+        combined_idx = use_identity * distances + (1 - use_identity) * logspace_idx
+        return torch.clamp(combined_idx, 0, 9)
 
     @staticmethod
     def get_counter_bucket(count):
@@ -83,9 +75,9 @@ class BaseMemory(nn.Module):
         return 9
 
     def get_distance_emb(self, ment_idx, last_mention_idx):
-        distance_buckets = [self.get_distance_bucket(ment_idx - ent_ment_idx)
-                            for ent_ment_idx in last_mention_idx]
-        distance_tens = torch.tensor(distance_buckets).long().cuda()
+        distance_tens = self.get_distance_bucket(ment_idx - last_mention_idx)
+                            # for ent_ment_idx in last_mention_idx]
+        # distance_tens = torch.tensor(distance_buckets).long().cuda()
         distance_embs = self.distance_embeddings(distance_tens)
         return distance_embs
 
@@ -101,7 +93,7 @@ class BaseMemory(nn.Module):
 
     @staticmethod
     def get_coref_mask(ent_counter):
-        cell_mask = (ent_counter > 0.0).float().cuda()
+        cell_mask = (ent_counter > 0.0).float()
         return cell_mask
 
     def get_coref_new_log_prob(self, query_vector, ment_score, mem_vectors, last_ment_vectors,

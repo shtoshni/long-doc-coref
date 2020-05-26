@@ -24,7 +24,7 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
 class Experiment:
-    def __init__(self, data_dir=None, conll_data_dir=None,
+    def __init__(self, data_dir=None, dataset='litbank', conll_data_dir=None,
                  model_dir=None, best_model_dir=None,
                  pretrained_mention_model=None,
                  # Model params
@@ -40,7 +40,7 @@ class Experiment:
         self.pretrained_mention_model = pretrained_mention_model
         # Prepare data info
         self.train_examples, self.dev_examples, self.test_examples \
-            = load_data(data_dir, max_segment_len)
+            = load_data(data_dir, max_segment_len, dataset=dataset)
         # if feedback:
         if num_train_docs is not None:
             self.train_examples = self.train_examples[:num_train_docs]
@@ -128,6 +128,7 @@ class Experiment:
             model.train()
             np.random.shuffle(self.train_examples)
             batch_loss = 0
+            pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
             errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0), ("WO", 0),
                                   ("FL", 0), ("C", 0)])#, ("WM", 0), ("CM", 0)])
             for example in self.train_examples:
@@ -136,6 +137,9 @@ class Experiment:
                 # batch_errors = classify_errors(pred_action_list, gt_actions)
                 # for key in errors:
                 #     errors[key] += batch_errors[key]
+                for pred_action, gt_action in zip(pred_action_list, gt_actions):
+                    pred_class_counter[pred_action[1]] += 1
+                    gt_class_counter[gt_action[1]] += 1
 
                 total_loss = loss['total']
                 batch_loss += total_loss.item()
@@ -156,6 +160,9 @@ class Experiment:
 
                 if self.train_info['global_steps'] % 10 == 0:
                     print(example["doc_key"], '{:.3f}'.format(total_loss.item()))
+
+            print("Ground Truth Actions:", gt_class_counter)
+            print("Predicted Actions:", pred_class_counter)
 
             sys.stdout.flush()
             # logging.info(errors)
@@ -199,31 +206,31 @@ class Experiment:
         model = self.model
         model.eval()
         errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0),
-                              ("WO", 0), ("FL", 0), ("C", 0)])#, ("CM", 0), ("WM", 0)])
+                              ("WO", 0), ("FL", 0), ("C", 0)])  #, ("CM", 0), ("WM", 0)])
         batch_loss = 0
-        pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
+        # pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
         corr_actions, total_actions = 0, 0
         with torch.no_grad():
             for example in self.dev_examples:
                 loss, pred_action_list, pred_mentions, gt_actions, gt_mentions = model(example, teacher_forcing=True)
-                batch_errors = classify_errors(pred_action_list, gt_actions)
-                for key in errors:
-                    errors[key] += batch_errors[key]
-
-                for pred_action, gt_action in zip(pred_action_list, gt_actions):
-                    pred_class_counter[pred_action[1]] += 1
-                    gt_class_counter[gt_action[1]] += 1
-
-                    if tuple(pred_action) == tuple(gt_action):
-                        corr_actions += 1
+                # batch_errors = classify_errors(pred_action_list, gt_actions)
+                # for key in errors:
+                #     errors[key] += batch_errors[key]
+                #
+                # for pred_action, gt_action in zip(pred_action_list, gt_actions):
+                #     pred_class_counter[pred_action[1]] += 1
+                #     gt_class_counter[gt_action[1]] += 1
+                #
+                #     if tuple(pred_action) == tuple(gt_action):
+                #         corr_actions += 1
 
                 total_actions += len(gt_actions)
-                total_loss = loss['coref']
+                total_loss = loss['total']
                 batch_loss += total_loss.item()
 
         # logging.info("Val loss: %.3f" % batch_loss)
-        logging.info("Dev: %s", str(errors))
-        logging.info("(Teacher forced) Action accuracy: %.3f", corr_actions/total_actions)
+        # logging.info("Dev: %s", str(errors))
+        # logging.info("(Teacher forced) Action accuracy: %.3f", corr_actions/total_actions)
         model.train()
         return batch_loss/len(self.dev_examples)
 
@@ -249,6 +256,7 @@ class Experiment:
                 evaluator = CorefEvaluator()
                 oracle_evaluator = CorefEvaluator()
                 coref_predictions, subtoken_maps = {}, {}
+
                 for example in data_iter:
                     loss, action_list, pred_mentions, gt_actions, gt_mentions = model(example)
                     for pred_action, gt_action in zip(action_list, gt_actions):
@@ -257,6 +265,7 @@ class Experiment:
 
                         if tuple(pred_action) == tuple(gt_action):
                             corr_actions += 1
+
                     total_actions += len(action_list)
 
                     predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
@@ -287,6 +296,9 @@ class Experiment:
                     log_example["predicted_clusters"] = predicted_clusters
 
                     f.write(json.dumps(log_example) + "\n")
+
+                print("Ground Truth Actions:", gt_class_counter)
+                print("Predicted Actions:", pred_class_counter)
 
                 # Print individual metrics
                 indv_metrics_list = ['MUC', 'Bcub', 'CEAFE']

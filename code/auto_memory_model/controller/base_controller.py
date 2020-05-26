@@ -13,10 +13,11 @@ class BaseController(nn.Module):
     def __init__(self,
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
-                 train_span_model=False, **kwargs):
+                 train_span_model=False, sample_ignores=1.0, **kwargs):
         super(BaseController, self).__init__()
         self.max_span_width = max_span_width
         self.top_span_ratio = top_span_ratio
+        self.sample_ignores = sample_ignores
 
         if doc_enc == 'independent':
             self.doc_encoder = IndependentDocEncoder(**kwargs)
@@ -131,7 +132,12 @@ class BaseController(nn.Module):
         topk_starts = filt_cand_starts[topk_indices]
         topk_ends = filt_cand_ends[topk_indices]
         topk_scores = mention_scores[topk_indices]
-        return topk_starts, topk_ends, topk_scores
+
+        # Sort the mentions by (start) and tiebreak with (end)
+        sort_scores = topk_starts + 1e-5 * topk_ends
+        _, sorted_indices = torch.sort(sort_scores, 0)
+
+        return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices]
 
     def get_mention_embs_and_actions(self, example):
         encoded_doc = self.doc_encoder(example)
@@ -140,44 +146,48 @@ class BaseController(nn.Module):
         pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
 
         # Sort the predicted mentions
-        pred_mentions = zip(pred_starts.tolist(), pred_ends.tolist())
-        pred_mentions_scores = zip(pred_mentions, pred_scores)
-        pred_mentions_scores = sorted(pred_mentions_scores, key=lambda x: x[0][0] + 1e-5 * x[0][1])
-        pred_mentions, pred_scores = zip(*pred_mentions_scores)
-        pred_starts, pred_ends = zip(*pred_mentions)
-        pred_starts = torch.tensor(pred_starts).cuda()
-        pred_ends = torch.tensor(pred_ends).cuda()
+        pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
+        # print(list(pred_mentions))
+        pred_scores = torch.unbind(pred_scores)
+        # pred_mentions_scores = zip(pred_mentions, pred_scores)
+        # pred_mentions_scores = sorted(pred_mentions_scores, key=lambda x: x[0][0] + 1e-5 * x[0][1])
+        # pred_mentions, pred_scores = zip(*pred_mentions_scores)
+        # print(pred_mentions)
+        # # print(pred_scores)
+        # pred_starts, pred_ends = zip(*pred_mentions)
+        # pred_starts = torch.tensor(pred_starts).cuda()
+        # pred_ends = torch.tensor(pred_ends).cuda()
 
         gt_actions = self.get_actions(pred_mentions, example["clusters"])
         mention_embs = self.get_span_embeddings(
             encoded_doc, pred_starts, pred_ends)
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
-        # if self.training:
-        #     # Subsample from non-mentions
-        #     sub_gt_actions = list(gt_actions)
-        #     sub_mention_emb_list = list(mention_emb_list)
-        #     sub_pred_mentions = list(pred_mentions)
-        #     sub_pred_scores =  list(pred_scores)
-        #
-        #     rand_fl_list = list(np.random.random(len(gt_actions)))
-        #     for gt_action, mention_emb, pred_mention, pred_score, rand_fl in zip(
-        #             gt_actions, mention_emb_list, pred_mentions, pred_scores, rand_fl_list):
-        #         add_instance = True
-        #         if gt_action[1] == 'n':
-        #             if rand_fl > 0.2:
-        #                 add_instance = False
-        #
-        #         if add_instance:
-        #             sub_gt_actions.append(gt_action)
-        #             sub_mention_emb_list.append(mention_emb)
-        #             sub_pred_mentions.append(pred_mention)
-        #             sub_pred_scores.append(pred_score)
-        #
-        #     gt_actions = sub_gt_actions
-        #     mention_emb_list = sub_mention_emb_list
-        #     pred_mentions = sub_pred_mentions
-        #     pred_scores = sub_pred_scores
+        if self.training and self.sample_ignores < 1.0:
+            # Subsample from non-mentions
+            sub_gt_actions = list(gt_actions)
+            sub_mention_emb_list = list(mention_emb_list)
+            sub_pred_mentions = list(pred_mentions)
+            sub_pred_scores = list(pred_scores)
+
+            rand_fl_list = list(np.random.random(len(gt_actions)))
+            for gt_action, mention_emb, pred_mention, pred_score, rand_fl in zip(
+                    gt_actions, mention_emb_list, pred_mentions, pred_scores, rand_fl_list):
+                add_instance = True
+                if gt_action[1] == 'i':
+                    if rand_fl > self.sample_ignores:
+                        add_instance = False
+
+                if add_instance:
+                    sub_gt_actions.append(gt_action)
+                    sub_mention_emb_list.append(mention_emb)
+                    sub_pred_mentions.append(pred_mention)
+                    sub_pred_scores.append(pred_score)
+
+            gt_actions = sub_gt_actions
+            mention_emb_list = sub_mention_emb_list
+            pred_mentions = sub_pred_mentions
+            pred_scores = sub_pred_scores
 
         # mention_score_list = torch.unbind(pred_scores, dim=0)
         return gt_mentions, pred_mentions, gt_actions, mention_emb_list, pred_scores

@@ -25,23 +25,32 @@ class BaseFixedMemory(BaseMemory):
         """Initialize the memory to null."""
         mem = torch.zeros(self.num_cells, self.mem_size).cuda()
         ent_counter = torch.tensor([0 for i in range(self.num_cells)]).cuda()
-        last_mention_idx = [0 for _ in range(self.num_cells)]
+        last_mention_idx = torch.tensor([0 for i in range(self.num_cells)]).cuda()
         return mem, ent_counter, last_mention_idx
 
     def get_overwrite_ign_mask(self, ent_counter):
-        last_unused_cell = None
-        for cell_idx, cell_count in enumerate(ent_counter.tolist()):
-            if int(cell_count) == 0:
-                last_unused_cell = cell_idx
-                break
+        # last_unused_cell = None
+        # for cell_idx, cell_count in enumerate(ent_counter.tolist()):
+        #     if int(cell_count) == 0:
+        #         last_unused_cell = cell_idx
+        #         break
 
-        if last_unused_cell is not None:
-            score_arr = ([0] * last_unused_cell + [1]
-                         + [0] * (self.num_cells - last_unused_cell))
-            # Return the overwrite probability vector combined with ignore prob (last entry)
-            return torch.tensor(score_arr).cuda().float()
+        free_cell_mask = (ent_counter == 0.0)
+        if torch.max(free_cell_mask) > 0:
+            free_cell_mask = free_cell_mask * torch.arange(self.num_cells + 1, 1, -1).cuda()
+            free_cell_idx = torch.max(free_cell_mask, 0)[1]
+            last_unused_cell = free_cell_idx.item()
+            # score_arr = ([0] * last_unused_cell + [1]
+            #              + [0] * (self.num_cells - last_unused_cell - 1) + [1])
+            # # print(score_arr, last_unused_cell, ent_counter)
+            # # Return the overwrite probability vector combined with ignore prob (last entry)
+            # return torch.tensor(score_arr).cuda().float()
+            mask = torch.cuda.FloatTensor(1 + self.num_cells).fill_(0)
+            mask[last_unused_cell] = 1.0
+            mask[-1] = 1.0
+            return mask
         else:
-            return torch.tensor([1] * (1 + self.num_cells)).cuda().float()
+            return torch.cuda.FloatTensor(1 + self.num_cells).fill_(1)
 
     def get_all_mask(self, ent_counter):
         coref_mask = self.get_coref_mask(ent_counter)

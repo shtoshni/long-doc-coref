@@ -20,7 +20,8 @@ class UnboundedMemory(BaseMemory):
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
                        ment_idx, ent_counter, last_mention_idx):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
-        counter_embs = self.get_counter_emb(ent_counter)
+        counter_embs = torch.zeros_like(distance_embs).cuda()
+        # counter_embs = self.get_counter_emb(ent_counter)
 
         coref_new_scores = self.get_coref_new_log_prob(
             query_vector, ment_score, mem_vectors, last_ment_vectors,
@@ -93,6 +94,8 @@ class UnboundedMemory(BaseMemory):
                 action_str = pred_action_str
                 cell_idx = pred_cell_idx
 
+            action_list.append((pred_cell_idx, pred_action_str))
+
             if first_overwrite and action_str == 'o':
                 first_overwrite = False
                 # We start with a single empty memory cell
@@ -100,13 +103,10 @@ class UnboundedMemory(BaseMemory):
                 last_ment_vectors = torch.unsqueeze(query_vector, dim=0)
                 ent_counter = torch.tensor([1.0]).cuda()
                 last_mention_idx[0] = ment_idx
-                action_list.append((0, 'o'))
             else:
                 # During training this records the next actions  - during testing it records the
                 # predicted sequence of actions
                 num_ents = coref_new_scores.shape[0] - 1
-                action_list.append((pred_cell_idx, pred_action_str))
-
                 # Update the memory
                 rep_query_vector = query_vector.repeat(num_ents, 1)  # M x H
                 cell_mask = (torch.arange(0, num_ents) == cell_idx).float().cuda()

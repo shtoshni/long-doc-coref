@@ -9,7 +9,8 @@ class LRUMemory(BaseFixedMemory):
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
                        ment_idx, ent_counter, last_mention_idx, lru_list):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
-        counter_embs = self.get_counter_emb(ent_counter)
+        counter_embs = torch.zeros_like(distance_embs).cuda()
+        # counter_embs = self.get_counter_emb(ent_counter)
 
         coref_new_scores = self.get_coref_new_log_prob(
             query_vector, ment_score, mem_vectors, last_ment_vectors,
