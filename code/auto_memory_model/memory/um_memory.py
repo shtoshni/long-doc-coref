@@ -18,12 +18,9 @@ class UnboundedMemory(BaseMemory):
         return mem, ent_counter, last_mention_idx
 
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
-                       ment_idx, ent_counter, last_mention_idx):
-        distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
-
+                       ent_counter, feature_embs):
         coref_new_scores = self.get_coref_new_log_prob(
-            query_vector, ment_score, mem_vectors, last_ment_vectors,
-            ent_counter, distance_embs)
+            query_vector, ment_score, mem_vectors, last_ment_vectors, ent_counter, feature_embs)
 
         not_a_ment_score = self.not_a_mention(query_vector)
         over_ign_score = torch.cat([torch.tensor([0.0]).cuda(), not_a_ment_score - ment_score], dim=0).cuda()
@@ -52,7 +49,7 @@ class UnboundedMemory(BaseMemory):
         else:
             raise NotImplementedError
 
-    def forward(self, mention_emb_list, mention_scores, gt_actions,
+    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
@@ -68,10 +65,10 @@ class UnboundedMemory(BaseMemory):
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
-
+            feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
             coref_new_scores, overwrite_ign_scores = self.predict_action(
                 query_vector, ment_score, mem_vectors, last_ment_vectors,
-                ment_idx, ent_counter, last_mention_idx)
+                ent_counter, feature_embs)
 
             action_logit_list.append((coref_new_scores, overwrite_ign_scores))
             pred_cell_idx, pred_action_str = self.interpret_scores(

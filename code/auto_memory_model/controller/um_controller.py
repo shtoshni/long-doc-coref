@@ -104,9 +104,13 @@ class UnboundedMemController(BaseController):
         """
         gt_mentions, pred_mentions, gt_actions, mention_emb_list, mention_score_list = self.get_mention_embs_and_actions(example)
 
+        metadata = {}
+        if self.dataset == 'ontonotes':
+            metadata = {'genre': self.get_genre_embedding(example)}
+
         action_prob_list, action_list = self.memory_net(
-            mention_emb_list, mention_score_list, gt_actions,
-            teacher_forcing=teacher_forcing)  # , example[""])
+            mention_emb_list, mention_score_list, gt_actions, metadata,
+            teacher_forcing=teacher_forcing)
 
         loss = {}
         coref_new_prob_list, over_ign_prob_list = zip(*action_prob_list)

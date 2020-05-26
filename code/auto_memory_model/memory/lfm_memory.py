@@ -7,14 +7,11 @@ class LearnedFixedMemory(BaseFixedMemory):
         super(LearnedFixedMemory, self).__init__(**kwargs)
 
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
-                       ment_idx, ent_counter, last_mention_idx):
-        distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
-
+                       ent_counter, feature_embs):
         coref_new_scores = self.get_coref_new_log_prob(
-            query_vector, ment_score, mem_vectors, last_ment_vectors,
-            ent_counter, distance_embs)
+            query_vector, ment_score, mem_vectors, last_ment_vectors, ent_counter, feature_embs)
         # Fertility Score
-        mem_fert_input = torch.cat([mem_vectors, distance_embs], dim=-1)
+        mem_fert_input = torch.cat([mem_vectors, feature_embs], dim=-1)
         mem_fert = torch.squeeze(self.fert_mlp(mem_fert_input), dim=-1)
 
         ment_fert = self.ment_fert_mlp(query_vector) - ment_score
@@ -40,7 +37,7 @@ class LearnedFixedMemory(BaseFixedMemory):
         else:
             raise NotImplementedError
 
-    def forward(self, mention_emb_list, mention_scores, gt_actions,
+    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
@@ -55,10 +52,10 @@ class LearnedFixedMemory(BaseFixedMemory):
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
-
+            feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
             coref_new_scores, overwrite_ign_scores = self.predict_action(
                 query_vector, ment_score, mem_vectors, last_ment_vectors,
-                ment_idx, ent_counter, last_mention_idx)
+                ent_counter, feature_embs)
 
             action_logit_list.append((coref_new_scores, overwrite_ign_scores))
             pred_cell_idx, pred_action_str = self.interpret_scores(coref_new_scores, overwrite_ign_scores)

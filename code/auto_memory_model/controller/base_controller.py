@@ -13,8 +13,11 @@ class BaseController(nn.Module):
     def __init__(self,
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
-                 train_span_model=False, emb_size=20, sample_ignores=1.0, **kwargs):
+                 train_span_model=False, emb_size=20, sample_ignores=1.0,
+                 dataset='litbank', **kwargs):
         super(BaseController, self).__init__()
+        self.dataset = dataset
+
         self.max_span_width = max_span_width
         self.top_span_ratio = top_span_ratio
         self.sample_ignores = sample_ignores
@@ -30,6 +33,15 @@ class BaseController(nn.Module):
         self.drop_module = nn.Dropout(p=dropout_rate, inplace=False)
         self.ment_emb = ment_emb
         self.ment_emb_to_size_factor = {'attn': 3, 'endpoint': 2, 'max': 1}
+
+        if self.dataset == 'ontonotes':
+            # Ontonotes - Genre embedding
+            self.genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
+            self.genre_to_idx = dict()
+            for idx, genre in enumerate(self.genre_list):
+                self.genre_to_idx[genre] = idx
+
+            self.genre_embeddings = nn.Embedding(len(self.genre_list), self.emb_size)
 
         if self.ment_emb == 'attn':
             self.mention_attn = nn.Linear(self.hsize, 1)
@@ -148,16 +160,7 @@ class BaseController(nn.Module):
 
         # Sort the predicted mentions
         pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
-        # print(list(pred_mentions))
         pred_scores = torch.unbind(pred_scores)
-        # pred_mentions_scores = zip(pred_mentions, pred_scores)
-        # pred_mentions_scores = sorted(pred_mentions_scores, key=lambda x: x[0][0] + 1e-5 * x[0][1])
-        # pred_mentions, pred_scores = zip(*pred_mentions_scores)
-        # print(pred_mentions)
-        # # print(pred_scores)
-        # pred_starts, pred_ends = zip(*pred_mentions)
-        # pred_starts = torch.tensor(pred_starts).cuda()
-        # pred_ends = torch.tensor(pred_ends).cuda()
 
         gt_actions = self.get_actions(pred_mentions, example["clusters"])
         mention_embs = self.get_span_embeddings(
@@ -192,6 +195,11 @@ class BaseController(nn.Module):
 
         # mention_score_list = torch.unbind(pred_scores, dim=0)
         return gt_mentions, pred_mentions, gt_actions, mention_emb_list, pred_scores
+
+    def get_genre_embedding(self, examples):
+        genre = examples["doc_key"][:2]
+        genre_idx = self.genre_to_idx[genre]
+        return self.genre_embeddings(torch.tensor(genre_idx).cuda())
 
     def forward(self, example, teacher_forcing=False):
         pass

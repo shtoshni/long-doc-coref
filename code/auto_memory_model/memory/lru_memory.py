@@ -7,16 +7,12 @@ class LRUMemory(BaseFixedMemory):
         super(LRUMemory, self).__init__(**kwargs)
 
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
-                       ment_idx, ent_counter, last_mention_idx, lru_list):
-        distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
-
+                       ent_counter, feature_embs, lru_list):
         coref_new_scores = self.get_coref_new_log_prob(
-            query_vector, ment_score, mem_vectors, last_ment_vectors,
-            ent_counter, distance_embs)
-
+            query_vector, ment_score, mem_vectors, last_ment_vectors, ent_counter, feature_embs)
         # Overwrite vs Ignore
         lru_cell = lru_list[0]
-        mem_fert_input = torch.cat([mem_vectors[lru_cell, :], distance_embs[lru_cell, :]], dim=0)
+        mem_fert_input = torch.cat([mem_vectors[lru_cell, :], feature_embs[lru_cell, :]], dim=0)
         mem_fert = self.fert_mlp(mem_fert_input)
 
         ment_fert = self.ment_fert_mlp(query_vector) - ment_score
@@ -24,7 +20,8 @@ class LRUMemory(BaseFixedMemory):
 
         return coref_new_scores, over_ign_score
 
-    def forward(self, mention_emb_list, mention_scores, gt_actions, teacher_forcing=False):
+    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
+                teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
         last_ment_vectors = torch.zeros_like(mem_vectors)
@@ -39,9 +36,10 @@ class LRUMemory(BaseFixedMemory):
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
+            feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
             coref_new_scores, over_ign_score = self.predict_action(
                 query_vector, ment_score, mem_vectors, last_ment_vectors,
-                ment_idx, ent_counter, last_mention_idx, lru_list)
+                ent_counter, feature_embs, lru_list)
 
             coref_new_max_idx = torch.argmax(coref_new_scores).item()
             if coref_new_max_idx < self.num_cells:

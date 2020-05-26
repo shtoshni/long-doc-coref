@@ -19,7 +19,7 @@ from auto_memory_model.controller.lfm_controller import LearnedFixedMemControlle
 from auto_memory_model.controller.lru_controller import LRUController
 from auto_memory_model.controller.um_controller import UnboundedMemController
 
-NUM_STUCK_EPOCHS = 10
+NUM_STUCK_EPOCHS = 5
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
@@ -28,20 +28,25 @@ class Experiment:
                  model_dir=None, best_model_dir=None,
                  pretrained_mention_model=None,
                  # Model params
-                 batch_size=32, seed=0, init_lr=1e-3, max_gradient_norm=5.0,
+                 seed=0, init_lr=1e-3, max_gradient_norm=5.0,
                  max_epochs=20, max_segment_len=128, eval=False, num_train_docs=None,
                  mem_type=False,
                  no_singletons=False,
                  # Other params
                  slurm_id=None, conll_scorer=None, **kwargs):
-
         # Set the random seed first
         self.seed = seed
         self.pretrained_mention_model = pretrained_mention_model
-        # Prepare data info
+
+        # Set dataset
+        self.dataset = dataset
+        if self.dataset == 'litbank':
+            self.update_frequency = 10
+        else:
+            self.update_frequency = 100
+
         self.train_examples, self.dev_examples, self.test_examples \
-            = load_data(data_dir, max_segment_len, dataset=dataset)
-        # if feedback:
+            = load_data(data_dir, max_segment_len, dataset=self.dataset)
         if num_train_docs is not None:
             self.train_examples = self.train_examples[:num_train_docs]
 
@@ -66,11 +71,11 @@ class Experiment:
 
         # Initialize model and training metadata
         if mem_type == 'fixed_mem':
-            self.model = LearnedFixedMemController(**kwargs).cuda()
+            self.model = LearnedFixedMemController(dataset=dataset, **kwargs).cuda()
         elif mem_type == 'lru':
-            self.model = LRUController(**kwargs).cuda()
+            self.model = LRUController(dataset=dataset, **kwargs).cuda()
         elif mem_type == 'unbounded':
-            self.model = UnboundedMemController(**kwargs).cuda()
+            self.model = UnboundedMemController(dataset=dataset, **kwargs).cuda()
         self.initialize_setup(init_lr=init_lr)
         utils.print_model_info(self.model)
         sys.stdout.flush()
@@ -105,7 +110,7 @@ class Experiment:
                 print(checkpoint['model'].keys())
                 self.model.load_state_dict(checkpoint['model'], strict=False)
         else:
-            logging.info('Loading previous model: %s' % (self.model_path))
+            logging.info('Loading previous model: %s' % self.model_path)
             # Load model
             self.load_model(self.model_path)
 
@@ -129,8 +134,8 @@ class Experiment:
             np.random.shuffle(self.train_examples)
             batch_loss = 0
             pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
-            errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0), ("WO", 0),
-                                  ("FL", 0), ("C", 0)])#, ("WM", 0), ("CM", 0)])
+            # errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0), ("WO", 0),
+            #                       ("FL", 0), ("C", 0)])
             for example in self.train_examples:
                 self.train_info['global_steps'] += 1
                 loss, pred_action_list, pred_mentions, gt_actions, gt_mentions = model(example)
@@ -158,14 +163,13 @@ class Experiment:
 
                 optimizer.step()
 
-                if self.train_info['global_steps'] % 10 == 0:
-                    print(example["doc_key"], '{:.3f}'.format(total_loss.item()))
+                if self.train_info['global_steps'] % self.update_frequency == 0:
+                    logging.info('{} {:.3f}'.format(example["doc_key"], total_loss.item()))
 
-            print("Ground Truth Actions:", gt_class_counter)
-            print("Predicted Actions:", pred_class_counter)
+            # print("Ground Truth Actions:", gt_class_counter)
+            # print("Predicted Actions:", pred_class_counter)
 
             sys.stdout.flush()
-            # logging.info(errors)
             # Update epochs done
             self.train_info['epoch'] = epoch + 1
 

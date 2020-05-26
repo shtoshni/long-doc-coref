@@ -18,33 +18,30 @@ def main():
 
     # Add arguments to parser
     parser.add_argument(
-        '-base_data_dir', default='/home/shtoshni/Research/litbank_coref/data/',
-        help='Root directory of data', type=str)
-    parser.add_argument('-base_model_dir',
-                        default='/home/shtoshni/Research/litbank_coref/models',
+        '-base_data_dir', default='../../data/', help='Root directory of data', type=str)
+    parser.add_argument('-base_model_dir', default='../../models',
                         help='Root folder storing model runs', type=str)
     parser.add_argument(
-        '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
+        '-dataset', default='ontonotes', choices=['litbank', 'ontonotes'], type=str)
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
-        default="/home/shtoshni/Research/litbank_coref/lrec2020-coref/"
-        "reference-coreference-scorers/scorer.pl")
+        default="../../lrec2020-coref/reference-coreference-scorers/scorer.pl")
 
     parser.add_argument('-model_size', default='base', type=str,
                         help='BERT model type')
     parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
-    parser.add_argument('-pretrained_bert_dir', default=None, type=str,
+    parser.add_argument('-pretrained_bert_dir', default='../../resources', type=str,
                         help='SpanBERT model location')
     parser.add_argument('-max_segment_len', default=512, type=int,
                         help='Max segment length of BERT segments.')
 
     # Mention variables
-    parser.add_argument('-max_span_width', default=20, type=int,
+    parser.add_argument('-max_span_width', default=30, type=int,
                         help='Max span width.')
     parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'endpoint'],
                         type=str, help='If true use an RNN on top of mention embeddings.')
-    parser.add_argument('-top_span_ratio', default=0.2, type=float,
+    parser.add_argument('-top_span_ratio', default=0.4, type=float,
                         help='Ratio of top spans proposed as mentions.')
     parser.add_argument('-train_span_model', default=False, action="store_true",
                         help="Whether to keep the mention detection model frozen or fine-tuned.")
