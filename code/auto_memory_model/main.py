@@ -81,7 +81,7 @@ def main():
     parser.add_argument('-ignore_wt', help='Weight of Ignore term in cross entropy loss',
                         default=1.0, type=float)
     parser.add_argument('-over_loss_wt', help='Weight of overwrite loss',
-                        default=0.1, type=float)
+                        default=1.0, type=float)
     parser.add_argument('-num_train_docs', default=None, type=int,
                         help='Number of training docs.')
     parser.add_argument('-sample_ignores', help='Sample ignores during training',

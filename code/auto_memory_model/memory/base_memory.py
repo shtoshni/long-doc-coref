@@ -3,6 +3,7 @@ import torch.nn as nn
 from pytorch_utils.modules import MLP
 import math
 
+LOG2 = math.log(2)
 
 class BaseMemory(nn.Module):
     def __init__(self, hsize=300, mlp_size=200, mlp_depth=1, coref_mlp_depth=1,
@@ -53,8 +54,8 @@ class BaseMemory(nn.Module):
 
     @staticmethod
     def get_distance_bucket(distances):
-        logspace_idx = (torch.floor(torch.log(distances.float())) / math.log(2)).int() + 3
-        use_identity = (distances <= 4).int()
+        logspace_idx = torch.floor(torch.log(distances.float()) / LOG2).long() + 3
+        use_identity = (distances <= 4).long()
         combined_idx = use_identity * distances + (1 - use_identity) * logspace_idx
         return torch.clamp(combined_idx, 0, 9)
 
