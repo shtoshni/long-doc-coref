@@ -13,7 +13,7 @@ class BaseController(nn.Module):
     def __init__(self,
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
-                 train_span_model=False, sample_ignores=1.0, **kwargs):
+                 train_span_model=False, emb_size=20, sample_ignores=1.0, **kwargs):
         super(BaseController, self).__init__()
         self.max_span_width = max_span_width
         self.top_span_ratio = top_span_ratio
@@ -26,6 +26,7 @@ class BaseController(nn.Module):
 
         self.hsize = self.doc_encoder.hsize
         self.mlp_size = mlp_size
+        self.emb_size = emb_size
         self.drop_module = nn.Dropout(p=dropout_rate, inplace=False)
         self.ment_emb = ment_emb
         self.ment_emb_to_size_factor = {'attn': 3, 'endpoint': 2, 'max': 1}
@@ -34,13 +35,13 @@ class BaseController(nn.Module):
             self.mention_attn = nn.Linear(self.hsize, 1)
 
         # Mention modeling part
-        self.span_width_embeddings = nn.Embedding(self.max_span_width, 20)
-        self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, 20)
-        self.mention_mlp = MLP(input_size=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 20,
+        self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
+        self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
+        self.mention_mlp = MLP(input_size=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
                                hidden_size=self.mlp_size,
                                output_size=1, num_hidden_layers=1, bias=True,
                                drop_module=self.drop_module)
-        self.span_width_mlp = MLP(input_size=20, hidden_size=self.mlp_size,
+        self.span_width_mlp = MLP(input_size=self.emb_size, hidden_size=self.mlp_size,
                                   output_size=1, num_hidden_layers=1, bias=True,
                                   drop_module=self.drop_module)
 

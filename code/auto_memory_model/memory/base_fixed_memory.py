@@ -11,15 +11,12 @@ class BaseFixedMemory(BaseMemory):
         self.num_cells = num_cells
 
         # Fixed memory cells need to predict fertility of memory and mentions
-        self.fert_mlp = MLP(input_size=self.mem_size + 2 * self.emb_size,
+        self.fert_mlp = MLP(input_size=self.mem_size + self.emb_size,
                             hidden_size=self.mlp_size, output_size=1, num_hidden_layers=self.mlp_depth,
                             bias=True, drop_module=self.drop_module)
         self.ment_fert_mlp = MLP(input_size=self.mem_size, hidden_size=self.mlp_size, output_size=1,
                                  num_hidden_layers=self.mlp_depth,
                                  bias=True, drop_module=self.drop_module)
-        # self.ment_fert_mlp = MLP(input_size=self.mem_size, hidden_size=self.mlp_size,
-        #                          output_size=1, num_layers=self.mlp_depth, bias=True,
-        #                          drop_module=self.drop_module)
 
     def initialize_memory(self):
         """Initialize the memory to null."""

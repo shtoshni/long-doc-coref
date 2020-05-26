@@ -11,7 +11,6 @@ class BaseMemory(nn.Module):
                  use_last_mention=False,
                  **kwargs):
         super(BaseMemory, self).__init__()
-        # self.query_mlp = query_mlp
         self.hsize = hsize
         self.mem_size = (mem_size if mem_size is not None else hsize)
         self.mlp_size = mlp_size
@@ -21,8 +20,6 @@ class BaseMemory(nn.Module):
 
         self.drop_module = drop_module
 
-        # self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, 'n': 3, '<s>': 4}
-        # self.action_idx_to_str = ['c', 'o', 'i', 'n']
         self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, '<s>': 3}
         self.action_idx_to_str = ['c', 'o', 'i']
 
@@ -37,20 +34,13 @@ class BaseMemory(nn.Module):
                 input_size=self.mem_size,
                 hidden_size=self.mem_size)
 
-        # CHANGE THIS PART
-        # self.query_projector = nn.Linear(self.hsize + self.emb_size, self.mem_size)
-
-        self.mem_coref_mlp = MLP(3 * self.mem_size + 2 * self.emb_size, self.mlp_size, 1,
+        self.mem_coref_mlp = MLP(3 * self.mem_size + self.emb_size, self.mlp_size, 1,
                                  num_hidden_layers=coref_mlp_depth, bias=True, drop_module=drop_module)
-        # self.ment_or_not_mlp = MLP(self.mem_size, self.mlp_size, 1,
-        #                            num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
         if self.use_last_mention:
             self.ment_coref_mlp = MLP(3 * self.mem_size, self.mlp_size, 1,
                                       num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
 
-        # self.last_action_emb = nn.Embedding(4, self.emb_size)
         self.distance_embeddings = nn.Embedding(10, self.emb_size)
-        self.counter_embeddings = nn.Embedding(10, self.emb_size)
 
     @staticmethod
     def get_distance_bucket(distances):
@@ -77,8 +67,6 @@ class BaseMemory(nn.Module):
 
     def get_distance_emb(self, ment_idx, last_mention_idx):
         distance_tens = self.get_distance_bucket(ment_idx - last_mention_idx)
-                            # for ent_ment_idx in last_mention_idx]
-        # distance_tens = torch.tensor(distance_buckets).long().cuda()
         distance_embs = self.distance_embeddings(distance_tens)
         return distance_embs
 
@@ -98,14 +86,14 @@ class BaseMemory(nn.Module):
         return cell_mask
 
     def get_coref_new_log_prob(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
-                               ent_counter, distance_embs, counter_embs):
+                               ent_counter, distance_embs):
         # Repeat the query vector for comparison against all cells
         num_cells = mem_vectors.shape[0]
         rep_query_vector = query_vector.repeat(num_cells, 1)  # M x H
 
         # Coref Score
         pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector,
-                              distance_embs, counter_embs], dim=-1)
+                              distance_embs], dim=-1)
         pair_score = self.mem_coref_mlp(pair_vec)
         coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
 
@@ -117,12 +105,10 @@ class BaseMemory(nn.Module):
             coref_score = coref_score + last_ment_score  # M
 
         coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0]).cuda()], dim=0)
-        # ment_or_not_ment_score = self.ment_or_not_mlp(query_vector)
         coref_new_scores = torch.cat(([coref_score, torch.tensor([0.0]).cuda()]), dim=0)
 
         coref_new_not_scores = coref_new_scores * coref_new_mask + (1 - coref_new_mask) * (-1e4)
-        # coref_new_not_log_prob = torch.nn.functional.log_softmax(coref_new_scores, dim=0)
-        return coref_new_not_scores  #, coref_new_not_log_prob
+        return coref_new_not_scores
 
     def forward(self, mention_emb_list, actions, mentions, teacher_forcing=False):
         pass

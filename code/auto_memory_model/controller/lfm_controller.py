@@ -10,7 +10,7 @@ class LearnedFixedMemController(BaseController):
     def __init__(self, num_cells=10, over_loss_wt=0.1, new_ent_wt=1.0, ignore_wt=1.0, **kwargs):
         super(LearnedFixedMemController, self).__init__(**kwargs)
         self.memory_net = LearnedFixedMemory(
-            num_cells=num_cells, hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 20,
+            num_cells=num_cells, hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
             drop_module=self.drop_module, **kwargs)
         self.num_cells = num_cells
         # Loss setup
@@ -28,8 +28,6 @@ class LearnedFixedMemController(BaseController):
         # Useful data structures
         pred_mentions = [tuple(mention) for mention in pred_mentions]
         mention_to_cluster = get_mention_to_cluster(gt_clusters)
-        possible_clusters = []
-        # for mention in pred_mentions:
 
         actions = []
         cell_to_cluster = {}
@@ -54,7 +52,6 @@ class LearnedFixedMemController(BaseController):
             if mention not in mention_to_cluster:
                 # Not a mention
                 actions.append((-1, 'i'))
-                # actions.append((-1, 'i'))
             else:
                 mention_cluster = mention_to_cluster[tuple(mention)]
                 if mention_cluster in cluster_to_cell:
@@ -140,8 +137,6 @@ class LearnedFixedMemController(BaseController):
                 action_indices.append(self.num_cells)
             else:
                 raise NotImplementedError
-            # else:
-            #     action_indices.append(self.num_cells + 1)
 
         return torch.tensor(action_indices).cuda()
 

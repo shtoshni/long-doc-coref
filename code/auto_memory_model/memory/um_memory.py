@@ -20,12 +20,10 @@ class UnboundedMemory(BaseMemory):
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
                        ment_idx, ent_counter, last_mention_idx):
         distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
-        counter_embs = torch.zeros_like(distance_embs).cuda()
-        # counter_embs = self.get_counter_emb(ent_counter)
 
         coref_new_scores = self.get_coref_new_log_prob(
             query_vector, ment_score, mem_vectors, last_ment_vectors,
-            ent_counter, distance_embs, counter_embs)
+            ent_counter, distance_embs)
 
         not_a_ment_score = self.not_a_mention(query_vector)
         over_ign_score = torch.cat([torch.tensor([0.0]).cuda(), not_a_ment_score - ment_score], dim=0).cuda()
@@ -65,16 +63,10 @@ class UnboundedMemory(BaseMemory):
 
         action_logit_list = []
         action_list = []  # argmax actions
-        # action_str = '<s>'
         first_overwrite = True
 
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
-            # width_bucket = self.get_mention_width_bucket(span_end - span_start)
-            # width_embedding = self.width_embeddings(torch.tensor(width_bucket).long().cuda())
-            # last_action_emb = self.get_last_action_emb(action_str)
-            # query_vector = self.query_projector(
-            #     torch.cat([ment_emb, last_action_emb, width_embedding], dim=0))
             query_vector = ment_emb
 
             coref_new_scores, overwrite_ign_scores = self.predict_action(

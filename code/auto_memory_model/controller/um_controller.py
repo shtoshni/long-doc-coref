@@ -14,7 +14,7 @@ class UnboundedMemController(BaseController):
         self.ignore_wt = ignore_wt
 
         self.memory_net = UnboundedMemory(
-            hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 20,
+            hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
             drop_module=self.drop_module, **kwargs)
         # Set loss functions
         self.loss_fn = {}

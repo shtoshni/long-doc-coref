@@ -9,7 +9,7 @@ from auto_memory_model.utils import get_mention_to_cluster, get_ordered_mentions
 class LRUController(LearnedFixedMemController):
     def __init__(self, **kwargs):
         super(LRUController, self).__init__(**kwargs)
-        self.memory_net = LRUMemory(hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 20,
+        self.memory_net = LRUMemory(hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
                                     drop_module=self.drop_module, **kwargs)
 
         # Set loss functions
