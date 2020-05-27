@@ -142,7 +142,7 @@ class LRUController(LearnedFixedMemController):
         """
         Encode a batch of excerpts.
         """
-        gt_mentions, pred_mentions, gt_actions, mention_emb_list, mention_score_list = self.get_mention_embs_and_actions(example)
+        pred_mentions, gt_actions, mention_emb_list, mention_score_list = self.get_mention_embs_and_actions(example)
 
         metadata = {}
         if self.dataset == 'ontonotes':
@@ -170,7 +170,7 @@ class LRUController(LearnedFixedMemController):
         if self.training or teacher_forcing:
             loss['coref'] = coref_loss / total_weight
             loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
-            return loss, action_list, pred_mentions, gt_actions, gt_mentions
+            return loss, action_list, pred_mentions, gt_actions
         else:
-            return coref_loss, action_list, pred_mentions, gt_actions, gt_mentions
+            return coref_loss, action_list, pred_mentions, gt_actions
 

@@ -84,7 +84,7 @@ class BaseController(nn.Module):
         span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
         # Add span width embeddings
         span_width_indices = ment_ends - ment_starts
-        span_width_embs = self.span_width_embeddings(span_width_indices)
+        span_width_embs = self.drop_module(self.span_width_embeddings(span_width_indices))
         span_emb_list.append(span_width_embs)
 
         if self.ment_emb == 'attn':
@@ -155,7 +155,6 @@ class BaseController(nn.Module):
     def get_mention_embs_and_actions(self, example):
         encoded_doc = self.doc_encoder(example)
 
-        gt_mentions = get_ordered_mentions(example["clusters"])
         pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
 
         # Sort the predicted mentions
@@ -167,12 +166,14 @@ class BaseController(nn.Module):
             encoded_doc, pred_starts, pred_ends)
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
+        # print(len(mention_emb_list))
         if self.training and self.sample_ignores < 1.0:
+            # print("Hello")
             # Subsample from non-mentions
-            sub_gt_actions = list(gt_actions)
-            sub_mention_emb_list = list(mention_emb_list)
-            sub_pred_mentions = list(pred_mentions)
-            sub_pred_scores = list(pred_scores)
+            sub_gt_actions = []
+            sub_mention_emb_list = []
+            sub_pred_mentions = []
+            sub_pred_scores = []
 
             rand_fl_list = list(np.random.random(len(gt_actions)))
             for gt_action, mention_emb, pred_mention, pred_score, rand_fl in zip(
@@ -193,8 +194,10 @@ class BaseController(nn.Module):
             pred_mentions = sub_pred_mentions
             pred_scores = sub_pred_scores
 
+        # print(len(mention_emb_list))
+
         # mention_score_list = torch.unbind(pred_scores, dim=0)
-        return gt_mentions, pred_mentions, gt_actions, mention_emb_list, pred_scores
+        return pred_mentions, gt_actions, mention_emb_list, pred_scores
 
     def get_genre_embedding(self, examples):
         genre = examples["doc_key"][:2]

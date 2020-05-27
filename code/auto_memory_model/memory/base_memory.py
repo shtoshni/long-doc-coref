@@ -94,7 +94,7 @@ class BaseMemory(nn.Module):
             genre_emb = torch.unsqueeze(genre_emb, dim=0).repeat(num_cells, 1)
             feature_embs_list.append(genre_emb)
 
-        feature_embs = torch.cat(feature_embs_list, dim=-1)
+        feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
         return feature_embs
 
     def get_coref_new_log_prob(self, query_vector, ment_score, mem_vectors, last_ment_vectors,

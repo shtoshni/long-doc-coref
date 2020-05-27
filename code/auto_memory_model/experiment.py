@@ -18,6 +18,7 @@ import pytorch_utils.utils as utils
 from auto_memory_model.controller.lfm_controller import LearnedFixedMemController
 from auto_memory_model.controller.lru_controller import LRUController
 from auto_memory_model.controller.um_controller import UnboundedMemController
+from auto_memory_model.controller.um_controller_ontonotes import UnboundedMemControllerOntoNotes
 
 NUM_STUCK_EPOCHS = 5
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -76,6 +77,10 @@ class Experiment:
             self.model = LRUController(dataset=dataset, **kwargs).cuda()
         elif mem_type == 'unbounded':
             self.model = UnboundedMemController(dataset=dataset, **kwargs).cuda()
+            # if self.dataset == 'litbank':
+            #     self.model = UnboundedMemController(dataset=dataset, **kwargs).cuda()
+            # elif self.dataset == 'ontonotes':
+            #     self.model = UnboundedMemControllerOntoNotes(dataset=dataset, **kwargs).cuda()
         self.initialize_setup(init_lr=init_lr)
         utils.print_model_info(self.model)
         sys.stdout.flush()
@@ -138,7 +143,7 @@ class Experiment:
             #                       ("FL", 0), ("C", 0)])
             for example in self.train_examples:
                 self.train_info['global_steps'] += 1
-                loss, pred_action_list, pred_mentions, gt_actions, gt_mentions = model(example)
+                loss, pred_action_list, pred_mentions, gt_actions = model(example)
                 # batch_errors = classify_errors(pred_action_list, gt_actions)
                 # for key in errors:
                 #     errors[key] += batch_errors[key]
@@ -216,7 +221,7 @@ class Experiment:
         corr_actions, total_actions = 0, 0
         with torch.no_grad():
             for example in self.dev_examples:
-                loss, pred_action_list, pred_mentions, gt_actions, gt_mentions = model(example, teacher_forcing=True)
+                loss, pred_action_list, pred_mentions, gt_actions = model(example, teacher_forcing=True)
                 # batch_errors = classify_errors(pred_action_list, gt_actions)
                 # for key in errors:
                 #     errors[key] += batch_errors[key]
@@ -262,7 +267,7 @@ class Experiment:
                 coref_predictions, subtoken_maps = {}, {}
 
                 for example in data_iter:
-                    loss, action_list, pred_mentions, gt_actions, gt_mentions = model(example)
+                    loss, action_list, pred_mentions, gt_actions = model(example)
                     for pred_action, gt_action in zip(action_list, gt_actions):
                         pred_class_counter[pred_action[1]] += 1
                         gt_class_counter[gt_action[1]] += 1
