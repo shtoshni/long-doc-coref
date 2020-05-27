@@ -166,37 +166,6 @@ class BaseController(nn.Module):
             encoded_doc, pred_starts, pred_ends)
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
-        # print(len(mention_emb_list))
-        if self.training and self.sample_ignores < 1.0:
-            # print("Hello")
-            # Subsample from non-mentions
-            sub_gt_actions = []
-            sub_mention_emb_list = []
-            sub_pred_mentions = []
-            sub_pred_scores = []
-
-            rand_fl_list = list(np.random.random(len(gt_actions)))
-            for gt_action, mention_emb, pred_mention, pred_score, rand_fl in zip(
-                    gt_actions, mention_emb_list, pred_mentions, pred_scores, rand_fl_list):
-                add_instance = True
-                if gt_action[1] == 'i':
-                    if rand_fl > self.sample_ignores:
-                        add_instance = False
-
-                if add_instance:
-                    sub_gt_actions.append(gt_action)
-                    sub_mention_emb_list.append(mention_emb)
-                    sub_pred_mentions.append(pred_mention)
-                    sub_pred_scores.append(pred_score)
-
-            gt_actions = sub_gt_actions
-            mention_emb_list = sub_mention_emb_list
-            pred_mentions = sub_pred_mentions
-            pred_scores = sub_pred_scores
-
-        # print(len(mention_emb_list))
-
-        # mention_score_list = torch.unbind(pred_scores, dim=0)
         return pred_mentions, gt_actions, mention_emb_list, pred_scores
 
     def get_genre_embedding(self, examples):

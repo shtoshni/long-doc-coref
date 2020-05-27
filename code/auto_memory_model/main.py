@@ -22,7 +22,7 @@ def main():
     parser.add_argument('-base_model_dir', default='../../models',
                         help='Root folder storing model runs', type=str)
     parser.add_argument(
-        '-dataset', default='ontonotes', choices=['litbank', 'ontonotes'], type=str)
+        '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../../lrec2020-coref/reference-coreference-scorers/scorer.pl")

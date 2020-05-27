@@ -13,9 +13,9 @@ class BaseMemory(nn.Module):
         super(BaseMemory, self).__init__()
         self.dataset = dataset
         if self.dataset == 'litbank':
-            self.num_feats = 2
-        elif self.dataset == 'ontonotes':
             self.num_feats = 3
+        elif self.dataset == 'ontonotes':
+            self.num_feats = 4
 
         self.hsize = hsize
         self.mem_size = (mem_size if mem_size is not None else hsize)
@@ -26,8 +26,8 @@ class BaseMemory(nn.Module):
 
         self.drop_module = drop_module
 
-        self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, '<s>': 3}
-        self.action_idx_to_str = ['c', 'o', 'i']
+        self.action_str_to_idx = {'c': 0, 'o': 1, 'n': 2, 'i': 3, '<s>': 4}
+        self.action_idx_to_str = ['c', 'o', 'n', 'i', '<s>']
 
         self.use_last_mention = use_last_mention
 
@@ -46,6 +46,7 @@ class BaseMemory(nn.Module):
             self.ment_coref_mlp = MLP(3 * self.mem_size, self.mlp_size, 1,
                                       num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
 
+        self.last_action_embeddings = nn.Embedding(5, self.emb_size)
         self.distance_embeddings = nn.Embedding(10, self.emb_size)
         self.counter_embeddings = nn.Embedding(10, self.emb_size)
 
@@ -93,6 +94,13 @@ class BaseMemory(nn.Module):
             num_cells = distance_embs.shape[0]
             genre_emb = torch.unsqueeze(genre_emb, dim=0).repeat(num_cells, 1)
             feature_embs_list.append(genre_emb)
+
+        if 'last_action' in metadata:
+            last_action_idx = torch.tensor(metadata['last_action']).long().cuda()
+            last_action_emb = self.last_action_embeddings(last_action_idx)
+            num_cells = distance_embs.shape[0]
+            last_action_emb = torch.unsqueeze(last_action_emb, dim=0).repeat(num_cells, 1)
+            feature_embs_list.append(last_action_emb)
 
         feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
         return feature_embs

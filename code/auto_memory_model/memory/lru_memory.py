@@ -32,10 +32,12 @@ class LRUMemory(BaseFixedMemory):
 
         action_logit_list = []
         action_list = []  # argmax actions
+        last_action_str = '<s>'
 
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
+            metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
             coref_new_scores, over_ign_score = self.predict_action(
                 query_vector, ment_score, mem_vectors, last_ment_vectors,
@@ -67,6 +69,8 @@ class LRUMemory(BaseFixedMemory):
                 # Inference time
                 action_str = pred_action_str
                 cell_idx = pred_cell_idx
+
+            last_action_str = action_str
 
             # Update the memory
             rep_query_vector = query_vector.repeat(self.num_cells, 1)

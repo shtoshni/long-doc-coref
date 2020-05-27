@@ -4,6 +4,7 @@ import torch.nn as nn
 from auto_memory_model.memory.lfm_memory import LearnedFixedMemory
 from auto_memory_model.controller.base_controller import BaseController
 from auto_memory_model.utils import get_mention_to_cluster, get_ordered_mentions
+import numpy as np
 
 
 class LearnedFixedMemController(BaseController):
@@ -88,6 +89,7 @@ class LearnedFixedMemController(BaseController):
 
                     if used_cell_idx is None:
                         # Ignore the mention
+                        # actions.append((-1, 'n'))
                         actions.append((-1, 'i'))
                     else:
                         # Overwrite
@@ -115,30 +117,51 @@ class LearnedFixedMemController(BaseController):
     def over_ign_tuple_to_idx(self, action_tuple_list, over_ign_prob_list):
         action_indices = []
         prob_list = []
+        rand_fl_list = np.random.random(len(action_tuple_list))
+        # weight = 0
 
-        for (cell_idx, action_str), over_ign_prob in zip(action_tuple_list, over_ign_prob_list):
+        for idx, ((cell_idx, action_str), over_ign_prob) in enumerate(zip(action_tuple_list, over_ign_prob_list)):
             if action_str == 'o' or action_str == 'i':
                 if action_str == 'o':
                     action_indices.append(cell_idx)
-                else:
-                    action_indices.append(self.num_cells)
+                elif action_str == 'i':
+                    if self.training and rand_fl_list[idx] > self.sample_ignores:
+                        action_indices.append(-100)
+                    else:
+                        action_indices.append(self.num_cells)
+                # elif action_str == 'n':
+
                 prob_list.append(over_ign_prob)
+
+                # if action_indices[-1] >= 0:
+                #     weight += 1
 
         action_indices = torch.tensor(action_indices).cuda()
         prob_tens = torch.stack(prob_list, dim=0).cuda()
-        return action_indices, prob_tens
+        return action_indices, prob_tens  # , weight
 
     def action_to_coref_new_idx(self, action_tuple_list):
         action_indices = []
-        for (cell_idx, action_str) in action_tuple_list:
+        rand_fl_list = np.random.random(len(action_tuple_list))
+        # weight = 0
+
+        for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
             if action_str == 'c':
                 action_indices.append(cell_idx)
-            elif action_str == 'o' or action_str == 'i':
+            elif action_str == 'o':
                 action_indices.append(self.num_cells)
+            elif action_str == 'i':
+                if self.training and rand_fl_list[idx] > self.sample_ignores:
+                    action_indices.append(-100)
+                else:
+                    action_indices.append(self.num_cells)
             else:
                 raise NotImplementedError
 
-        return torch.tensor(action_indices).cuda()
+            # if action_indices[-1] >= 0:
+            #     weight += 1
+
+        return torch.tensor(action_indices).cuda()  # , weight
 
     def forward(self, example, teacher_forcing=False):
         """
@@ -165,14 +188,13 @@ class LearnedFixedMemController(BaseController):
         over_action_indices, prob_tens = self.over_ign_tuple_to_idx(
             gt_actions, over_ign_prob_list)
         over_loss = self.loss_fn['over'](prob_tens, over_action_indices)
-        over_loss_weight = over_action_indices.shape[0]
-        loss['over'] = over_loss/over_loss_weight
+        loss['over'] = over_loss  # /over_weight
 
         coref_loss = self.loss_fn['coref'](action_prob_tens, action_indices)
-        total_weight = len(mention_emb_list)  # Total mentions
+        # total_weight = len(mention_emb_list)  # Total mentions
 
         if self.training or teacher_forcing:
-            loss['coref'] = coref_loss/total_weight
+            loss['coref'] = coref_loss  # /action_weight
             loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
             return loss, action_list, pred_mentions, gt_actions
         else:

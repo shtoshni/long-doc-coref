@@ -61,10 +61,12 @@ class UnboundedMemory(BaseMemory):
         action_logit_list = []
         action_list = []  # argmax actions
         first_overwrite = True
+        last_action_str = '<s>'
 
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
+            metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
             coref_new_scores, overwrite_ign_scores = self.predict_action(
                 query_vector, ment_score, mem_vectors, last_ment_vectors,
@@ -73,6 +75,7 @@ class UnboundedMemory(BaseMemory):
             action_logit_list.append((coref_new_scores, overwrite_ign_scores))
             pred_cell_idx, pred_action_str = self.interpret_scores(
                 coref_new_scores, overwrite_ign_scores, first_overwrite)
+            action_list.append((pred_cell_idx, pred_action_str))
 
             if self.training or teacher_forcing:
                 # Training - Operate over the ground truth
@@ -83,7 +86,7 @@ class UnboundedMemory(BaseMemory):
                 action_str = pred_action_str
                 cell_idx = pred_cell_idx
 
-            action_list.append((pred_cell_idx, pred_action_str))
+            last_action_str = action_str
 
             if first_overwrite and action_str == 'o':
                 first_overwrite = False
