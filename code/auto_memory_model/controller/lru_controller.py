@@ -4,6 +4,7 @@ import torch.nn as nn
 from auto_memory_model.memory.lru_memory import LRUMemory
 from auto_memory_model.controller.lfm_controller import LearnedFixedMemController
 from auto_memory_model.utils import get_mention_to_cluster, get_ordered_mentions
+import numpy as np
 
 
 class LRUController(LearnedFixedMemController):
@@ -119,18 +120,20 @@ class LRUController(LearnedFixedMemController):
 
         return actions
 
-    @staticmethod
-    def over_ign_tuple_to_idx(action_tuple_list, over_ign_prob_list):
+    def over_ign_tuple_to_idx(self, action_tuple_list, over_ign_prob_list):
         action_indices = []
         prob_list = []
-
-        for (cell_idx, action_str), over_ign_prob in zip(action_tuple_list, over_ign_prob_list):
+        rand_fl_list = np.random.random(len(action_tuple_list))
+        for idx, ((cell_idx, action_str), over_ign_prob) in enumerate(zip(action_tuple_list, over_ign_prob_list)):
             if action_str == 'c':
                 continue
             elif action_str == 'o':
                 action_indices.append(0)
             elif action_str == 'i':
-                action_indices.append(1)
+                if self.training and rand_fl_list[idx] > self.sample_ignores:
+                    action_indices.append(-100)
+                else:
+                    action_indices.append(1)
             elif action_str == 'n':
                 action_indices.append(2)
 
@@ -164,13 +167,13 @@ class LRUController(LearnedFixedMemController):
             gt_actions, over_ign_prob_list)
         over_loss = self.loss_fn['over'](prob_tens, over_action_indices)
         over_loss_weight = over_action_indices.shape[0]
-        loss['over'] = over_loss / over_loss_weight
+        loss['over'] = over_loss  # / over_loss_weight
 
         coref_loss = self.loss_fn['coref'](action_prob_tens, action_indices)
         total_weight = len(mention_emb_list)  # Total mentions
 
         if self.training or teacher_forcing:
-            loss['coref'] = coref_loss / total_weight
+            loss['coref'] = coref_loss  # / total_weight
             loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
             return loss, action_list, pred_mentions, gt_actions
         else:

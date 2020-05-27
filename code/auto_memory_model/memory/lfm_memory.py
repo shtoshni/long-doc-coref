@@ -15,7 +15,7 @@ class LearnedFixedMemory(BaseFixedMemory):
         mem_fert = torch.squeeze(self.fert_mlp(mem_fert_input), dim=-1)
 
         ment_fert = self.ment_fert_mlp(torch.cat([query_vector, ment_feature_embs], dim=-1))
-        overwrite_ign_no_space_scores = torch.cat([mem_fert, torch.tensor([-ment_score]).cuda(), ment_fert], dim=0)
+        overwrite_ign_no_space_scores = torch.cat([mem_fert, -ment_score, ment_fert], dim=0)
 
         overwrite_ign_mask = self.get_overwrite_ign_mask(ent_counter)
         overwrite_ign_no_space_scores = overwrite_ign_no_space_scores * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
@@ -35,7 +35,6 @@ class LearnedFixedMemory(BaseFixedMemory):
             elif over_max_idx == self.num_cells:
                 return -1, 'i'
             elif over_max_idx == self.num_cells + 1:
-                # print("Hello")
                 # No space
                 return -1, 'n'
         else:

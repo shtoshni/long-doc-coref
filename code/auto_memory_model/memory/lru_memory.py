@@ -16,7 +16,7 @@ class LRUMemory(BaseFixedMemory):
         mem_fert = self.fert_mlp(mem_fert_input)
 
         ment_fert = self.ment_fert_mlp(torch.cat([query_vector, ment_feature_embs], dim=-1))
-        over_ign_score = torch.cat([mem_fert, torch.tensor([-ment_score]).cuda(), ment_fert], dim=0)
+        over_ign_score = torch.cat([mem_fert, -ment_score, ment_fert], dim=0)
 
         return coref_new_scores, over_ign_score
 

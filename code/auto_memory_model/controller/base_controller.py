@@ -159,7 +159,7 @@ class BaseController(nn.Module):
 
         # Sort the predicted mentions
         pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
-        pred_scores = torch.unbind(pred_scores)
+        pred_scores = torch.unbind(torch.unsqueeze(pred_scores, dim=1))
 
         gt_actions = self.get_actions(pred_mentions, example["clusters"])
         mention_embs = self.get_span_embeddings(

@@ -24,7 +24,7 @@ class UnboundedMemory(BaseMemory):
 
         not_a_ment_score = self.not_a_mention(query_vector)
         over_ign_score = torch.cat([torch.tensor([0.0]).cuda(), not_a_ment_score - ment_score], dim=0).cuda()
-
+        # over_ign_score = torch.cat([torch.tensor([0.0]).cuda(), -ment_score], dim=0).cuda()
         return coref_new_scores, over_ign_score
 
     def interpret_scores(self, coref_new_scores, overwrite_ign_scores, first_overwrite):
