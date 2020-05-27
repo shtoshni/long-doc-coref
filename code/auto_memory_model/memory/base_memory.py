@@ -26,8 +26,8 @@ class BaseMemory(nn.Module):
 
         self.drop_module = drop_module
 
-        self.action_str_to_idx = {'c': 0, 'o': 1, 'n': 2, 'i': 3, '<s>': 4}
-        self.action_idx_to_str = ['c', 'o', 'n', 'i', '<s>']
+        self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, 'n': 3, '<s>': 4}
+        self.action_idx_to_str = ['c', 'o', 'i', 'n', '<s>']
 
         self.use_last_mention = use_last_mention
 
@@ -100,6 +100,21 @@ class BaseMemory(nn.Module):
             last_action_emb = self.last_action_embeddings(last_action_idx)
             num_cells = distance_embs.shape[0]
             last_action_emb = torch.unsqueeze(last_action_emb, dim=0).repeat(num_cells, 1)
+            feature_embs_list.append(last_action_emb)
+
+        feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
+        return feature_embs
+
+    def get_ment_feature_embs(self, metadata):
+        feature_embs_list = []
+
+        if 'genre' in metadata:
+            genre_emb = metadata['genre']
+            feature_embs_list.append(genre_emb)
+
+        if 'last_action' in metadata:
+            last_action_idx = torch.tensor(metadata['last_action']).long().cuda()
+            last_action_emb = self.last_action_embeddings(last_action_idx)
             feature_embs_list.append(last_action_emb)
 
         feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))

@@ -14,8 +14,8 @@ class BaseFixedMemory(BaseMemory):
         self.fert_mlp = MLP(input_size=self.mem_size + self.num_feats * self.emb_size,
                             hidden_size=self.mlp_size, output_size=1, num_hidden_layers=self.mlp_depth,
                             bias=True, drop_module=self.drop_module)
-        self.ment_fert_mlp = MLP(input_size=self.mem_size, hidden_size=self.mlp_size, output_size=1,
-                                 num_hidden_layers=self.mlp_depth,
+        self.ment_fert_mlp = MLP(input_size=self.mem_size + (self.num_feats - 2) * self.emb_size,
+                                 hidden_size=self.mlp_size, output_size=1, num_hidden_layers=self.mlp_depth,
                                  bias=True, drop_module=self.drop_module)
 
     def initialize_memory(self):
@@ -31,12 +31,13 @@ class BaseFixedMemory(BaseMemory):
             free_cell_mask = free_cell_mask * torch.arange(self.num_cells + 1, 1, -1).cuda()
             free_cell_idx = torch.max(free_cell_mask, 0)[1]
             last_unused_cell = free_cell_idx.item()
-            mask = torch.cuda.FloatTensor(1 + self.num_cells).fill_(0)
+            mask = torch.zeros(self.num_cells + 2).cuda()
             mask[last_unused_cell] = 1.0
-            mask[-1] = 1.0
+            mask[-2] = 1.0  # Not a mention
+            mask[-1] = 0.0  # Not worth tracking
             return mask
         else:
-            return torch.cuda.FloatTensor(1 + self.num_cells).fill_(1)
+            return torch.ones(self.num_cells + 2).cuda()
 
     def get_all_mask(self, ent_counter):
         coref_mask = self.get_coref_mask(ent_counter)

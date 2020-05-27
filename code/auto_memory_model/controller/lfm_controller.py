@@ -22,7 +22,7 @@ class LearnedFixedMemController(BaseController):
         self.loss_fn = {}
         coref_loss_wts = torch.tensor([1.0] * self.num_cells + [self.new_ent_wt]).cuda()
         self.loss_fn['coref'] = nn.CrossEntropyLoss(weight=coref_loss_wts, reduction='sum')
-        over_loss_wts = torch.tensor([1.0] * self.num_cells + [self.ignore_wt]).cuda()
+        over_loss_wts = torch.tensor([1.0] * self.num_cells + [self.ignore_wt] + [1.0]).cuda()
         self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum')
 
     def get_actions(self, pred_mentions, gt_clusters):
@@ -89,8 +89,8 @@ class LearnedFixedMemController(BaseController):
 
                     if used_cell_idx is None:
                         # Ignore the mention
-                        # actions.append((-1, 'n'))
-                        actions.append((-1, 'i'))
+                        actions.append((-1, 'n'))
+                        # actions.append((-1, 'i'))
                     else:
                         # Overwrite
                         actions.append((used_cell_idx, 'o'))
@@ -121,7 +121,7 @@ class LearnedFixedMemController(BaseController):
         # weight = 0
 
         for idx, ((cell_idx, action_str), over_ign_prob) in enumerate(zip(action_tuple_list, over_ign_prob_list)):
-            if action_str == 'o' or action_str == 'i':
+            if action_str != 'c':
                 if action_str == 'o':
                     action_indices.append(cell_idx)
                 elif action_str == 'i':
@@ -129,7 +129,9 @@ class LearnedFixedMemController(BaseController):
                         action_indices.append(-100)
                     else:
                         action_indices.append(self.num_cells)
-                # elif action_str == 'n':
+                elif action_str == 'n':
+                    # No space
+                    action_indices.append(self.num_cells + 1)
 
                 prob_list.append(over_ign_prob)
 
@@ -151,10 +153,14 @@ class LearnedFixedMemController(BaseController):
             elif action_str == 'o':
                 action_indices.append(self.num_cells)
             elif action_str == 'i':
+                # Not a mention
                 if self.training and rand_fl_list[idx] > self.sample_ignores:
                     action_indices.append(-100)
                 else:
                     action_indices.append(self.num_cells)
+            elif action_str == 'n':
+                # No space
+                action_indices.append(self.num_cells)
             else:
                 raise NotImplementedError
 

@@ -14,7 +14,7 @@ class LRUController(LearnedFixedMemController):
 
         # Set loss functions
         # Overwrite in LRU has only 2 classes - Overwrite (LRU cell) and Ignore
-        over_loss_wts = torch.tensor([1.0] + [self.ignore_wt]).cuda()
+        over_loss_wts = torch.tensor([1.0] + [self.ignore_wt] + [1.0]).cuda()
         self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum')
 
     def get_actions(self, pred_mentions, gt_clusters):
@@ -89,7 +89,7 @@ class LRUController(LearnedFixedMemController):
 
                     if used_cell_idx is None:
                         # Ignore the mention
-                        actions.append((-1, 'i'))
+                        actions.append((-1, 'n'))
                     else:
                         # Overwrite
                         actions.append((used_cell_idx, 'o'))
@@ -129,8 +129,10 @@ class LRUController(LearnedFixedMemController):
                 continue
             elif action_str == 'o':
                 action_indices.append(0)
-            else:
+            elif action_str == 'i':
                 action_indices.append(1)
+            elif action_str == 'n':
+                action_indices.append(2)
 
             prob_list.append(over_ign_prob)
 

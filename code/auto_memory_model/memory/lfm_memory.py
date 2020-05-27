@@ -7,33 +7,37 @@ class LearnedFixedMemory(BaseFixedMemory):
         super(LearnedFixedMemory, self).__init__(**kwargs)
 
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
-                       ent_counter, feature_embs):
+                       ent_counter, feature_embs, ment_feature_embs):
         coref_new_scores = self.get_coref_new_log_prob(
             query_vector, ment_score, mem_vectors, last_ment_vectors, ent_counter, feature_embs)
         # Fertility Score
         mem_fert_input = torch.cat([mem_vectors, feature_embs], dim=-1)
         mem_fert = torch.squeeze(self.fert_mlp(mem_fert_input), dim=-1)
 
-        ment_fert = self.ment_fert_mlp(query_vector) - ment_score
-        fert_scores = torch.cat([mem_fert, ment_fert], dim=0)
+        ment_fert = self.ment_fert_mlp(torch.cat([query_vector, ment_feature_embs], dim=-1))
+        overwrite_ign_no_space_scores = torch.cat([mem_fert, torch.tensor([-ment_score]).cuda(), ment_fert], dim=0)
 
         overwrite_ign_mask = self.get_overwrite_ign_mask(ent_counter)
-        overwrite_ign_scores = fert_scores * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
+        overwrite_ign_no_space_scores = overwrite_ign_no_space_scores * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
 
-        return coref_new_scores, overwrite_ign_scores
+        return coref_new_scores, overwrite_ign_no_space_scores
 
-    def interpret_scores(self, coref_new_scores, overwrite_ign_scores):
+    def interpret_scores(self, coref_new_scores, overwrite_ign_no_space_scores):
         pred_max_idx = torch.argmax(coref_new_scores).item()
         if pred_max_idx < self.num_cells:
             # Coref
             return pred_max_idx, 'c'
         elif pred_max_idx == self.num_cells:
             # Overwrite/Ignore
-            over_max_idx = torch.argmax(overwrite_ign_scores).item()
+            over_max_idx = torch.argmax(overwrite_ign_no_space_scores).item()
             if over_max_idx < self.num_cells:
                 return over_max_idx, 'o'
-            else:
+            elif over_max_idx == self.num_cells:
                 return -1, 'i'
+            elif over_max_idx == self.num_cells + 1:
+                # print("Hello")
+                # No space
+                return -1, 'n'
         else:
             raise NotImplementedError
 
@@ -55,15 +59,17 @@ class LearnedFixedMemory(BaseFixedMemory):
             query_vector = ment_emb
             metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
-            coref_new_scores, overwrite_ign_scores = self.predict_action(
-                query_vector, ment_score, mem_vectors, last_ment_vectors,
-                ent_counter, feature_embs)
+            ment_feature_embs = self.get_ment_feature_embs(metadata)
 
-            pred_cell_idx, pred_action_str = self.interpret_scores(coref_new_scores, overwrite_ign_scores)
+            coref_new_scores, overwrite_ign_no_space_scores = self.predict_action(
+                query_vector, ment_score, mem_vectors, last_ment_vectors,
+                ent_counter, feature_embs, ment_feature_embs)
+
+            pred_cell_idx, pred_action_str = self.interpret_scores(coref_new_scores, overwrite_ign_no_space_scores)
             # During training this records the next actions  - during testing it records the
             # predicted sequence of actions
             action_list.append((pred_cell_idx, pred_action_str))
-            action_logit_list.append((coref_new_scores, overwrite_ign_scores))
+            action_logit_list.append((coref_new_scores, overwrite_ign_no_space_scores))
 
             if self.training or teacher_forcing:
                 # Training - Operate over the ground truth

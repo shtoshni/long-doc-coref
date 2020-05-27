@@ -7,7 +7,7 @@ class LRUMemory(BaseFixedMemory):
         super(LRUMemory, self).__init__(**kwargs)
 
     def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
-                       ent_counter, feature_embs, lru_list):
+                       ent_counter, feature_embs, ment_feature_embs, lru_list):
         coref_new_scores = self.get_coref_new_log_prob(
             query_vector, ment_score, mem_vectors, last_ment_vectors, ent_counter, feature_embs)
         # Overwrite vs Ignore
@@ -15,8 +15,8 @@ class LRUMemory(BaseFixedMemory):
         mem_fert_input = torch.cat([mem_vectors[lru_cell, :], feature_embs[lru_cell, :]], dim=0)
         mem_fert = self.fert_mlp(mem_fert_input)
 
-        ment_fert = self.ment_fert_mlp(query_vector) - ment_score
-        over_ign_score = torch.cat([mem_fert, ment_fert], dim=0)
+        ment_fert = self.ment_fert_mlp(torch.cat([query_vector, ment_feature_embs], dim=-1))
+        over_ign_score = torch.cat([mem_fert, torch.tensor([-ment_score]).cuda(), ment_fert], dim=0)
 
         return coref_new_scores, over_ign_score
 
@@ -39,9 +39,11 @@ class LRUMemory(BaseFixedMemory):
             query_vector = ment_emb
             metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
+            ment_feature_embs = self.get_ment_feature_embs(metadata)
+
             coref_new_scores, over_ign_score = self.predict_action(
                 query_vector, ment_score, mem_vectors, last_ment_vectors,
-                ent_counter, feature_embs, lru_list)
+                ent_counter, feature_embs, ment_feature_embs, lru_list)
 
             coref_new_max_idx = torch.argmax(coref_new_scores).item()
             if coref_new_max_idx < self.num_cells:
@@ -52,8 +54,11 @@ class LRUMemory(BaseFixedMemory):
                 if over_ign_max_idx == 0:
                     pred_action_str = 'o'
                     pred_cell_idx = lru_list[0]
-                else:
+                elif over_ign_max_idx == 1:
                     pred_action_str = 'i'
+                    pred_cell_idx = -1
+                elif over_ign_max_idx == 2:
+                    pred_action_str = 'n'
                     pred_cell_idx = -1
 
             # During training this records the next actions  - during testing it records the
@@ -112,7 +117,7 @@ class LRUMemory(BaseFixedMemory):
                 ent_counter = ent_counter * (1 - cell_mask) + cell_mask
                 last_mention_idx[cell_idx] = ment_idx
 
-            if action_str != 'i':
+            if action_str in ['o', 'c']:
                 # Coref or overwrite was chosen
                 lru_list.remove(cell_idx)
                 lru_list.append(cell_idx)
