@@ -56,7 +56,7 @@ class UnboundedMemory(BaseMemory):
         else:
             raise NotImplementedError
 
-    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
+    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata, rand_fl_list,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
@@ -70,21 +70,25 @@ class UnboundedMemory(BaseMemory):
         first_overwrite = True
         last_action_str = '<s>'
 
+        follow_gt = self.training or teacher_forcing
+
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
             metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
-            coref_new_scores, overwrite_ign_scores = self.predict_action(
-                query_vector, ment_score, mem_vectors, last_ment_vectors,
-                ent_counter, feature_embs)
 
-            action_logit_list.append((coref_new_scores, overwrite_ign_scores))
-            pred_cell_idx, pred_action_str = self.interpret_scores(
-                coref_new_scores, overwrite_ign_scores, first_overwrite)
-            action_list.append((pred_cell_idx, pred_action_str))
+            if not (follow_gt and gt_action_str == 'i' and rand_fl_list[ment_idx] > self.sample_ignores):
+                coref_new_scores, overwrite_ign_scores = self.predict_action(
+                    query_vector, ment_score, mem_vectors, last_ment_vectors,
+                    ent_counter, feature_embs)
 
-            if self.training or teacher_forcing:
+                pred_cell_idx, pred_action_str = self.interpret_scores(
+                    coref_new_scores, overwrite_ign_scores, first_overwrite)
+                action_logit_list.append((coref_new_scores, overwrite_ign_scores))
+                action_list.append((pred_cell_idx, pred_action_str))
+
+            if follow_gt:
                 # Training - Operate over the ground truth
                 action_str = gt_action_str
                 cell_idx = gt_cell_idx
@@ -105,7 +109,7 @@ class UnboundedMemory(BaseMemory):
             else:
                 # During training this records the next actions  - during testing it records the
                 # predicted sequence of actions
-                num_ents = coref_new_scores.shape[0] - 1
+                num_ents = mem_vectors.shape[0]
                 # Update the memory
                 rep_query_vector = query_vector.repeat(num_ents, 1)  # M x H
                 cell_mask = (torch.arange(0, num_ents) == cell_idx).float().cuda()

@@ -21,7 +21,7 @@ class UnboundedMemController(BaseController):
         self.loss_fn = {}
         # Overwrite in Unbounded has only 2 classes - Overwrite and Ignore
         over_loss_wts = torch.tensor([1.0] + [self.ignore_wt]).cuda()
-        self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum')
+        self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum', ignore_index=-100)
 
     @staticmethod
     def get_actions(pred_mentions, clusters):
@@ -52,15 +52,13 @@ class UnboundedMemController(BaseController):
 
         return actions
 
-    def calculate_coref_loss(self, action_prob_list, action_tuple_list):
+    def calculate_coref_loss(self, action_prob_list, action_tuple_list, rand_fl_list, follow_gt):
         num_cells = 0
         coref_loss = 0.0
-        rand_fl_list = np.random.random(len(action_tuple_list))
-        # num_actions = 0
+        target_list = []
 
+        # First filter the action tuples to sample ignores
         for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
-            # if idx == 0:
-            #     continue
             gt_idx = None
             if action_str == 'c':
                 gt_idx = cell_idx
@@ -70,15 +68,15 @@ class UnboundedMemController(BaseController):
                 num_cells += 1
             elif action_str == 'i':
                 # Ignore
-                if self.training and rand_fl_list[idx] > self.sample_ignores:
-                    gt_idx = -100
+                if follow_gt and rand_fl_list[idx] > self.sample_ignores:
+                    continue
                 else:
                     gt_idx = (1 if num_cells == 0 else num_cells)
 
-            # if gt_idx >= 0:
-            #     num_actions += 1
-
             target = torch.tensor([gt_idx]).cuda()
+            target_list.append(target)
+
+        for idx, target in enumerate(target_list):
             logit_tens = torch.unsqueeze(action_prob_list[idx], dim=0)
 
             # print(target, logit_tens.shape)
@@ -88,27 +86,23 @@ class UnboundedMemController(BaseController):
 
         return coref_loss
 
-    def over_ign_tuple_to_idx(self, action_tuple_list, over_ign_prob_list):
+    def over_ign_tuple_to_idx(self, action_tuple_list, rand_fl_list, follow_gt):
         action_indices = []
-        prob_list = []
-        rand_fl_list = np.random.random(len(action_tuple_list))
-        for idx, ((cell_idx, action_str), over_ign_prob) in enumerate(zip(action_tuple_list, over_ign_prob_list)):
+
+        for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
             if action_str == 'c':
-                continue
+                action_indices.append(-100)
             elif action_str == 'o':
                 action_indices.append(0)
-            else:
-                if self.training and rand_fl_list[idx] > self.sample_ignores:
-                    gt_idx = -100
+            elif action_str == 'i':
+                # Not a mention
+                if follow_gt and rand_fl_list[idx] > self.sample_ignores:
+                    pass
                 else:
-                    gt_idx = 1
-                action_indices.append(gt_idx)
-
-            prob_list.append(over_ign_prob)
+                    action_indices.append(1)
 
         action_indices = torch.tensor(action_indices).cuda()
-        prob_tens = torch.stack(prob_list, dim=0).cuda()
-        return action_indices, prob_tens
+        return action_indices
 
     def forward(self, example, teacher_forcing=False):
         """
@@ -120,23 +114,28 @@ class UnboundedMemController(BaseController):
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(example)}
 
+        rand_fl_list = np.random.random(len(mention_emb_list))
+        follow_gt = self.training or teacher_forcing
+
         action_prob_list, action_list = self.memory_net(
-            mention_emb_list, mention_score_list, gt_actions, metadata,
+            mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
             teacher_forcing=teacher_forcing)
 
         loss = {}
-        coref_new_prob_list, over_ign_prob_list = zip(*action_prob_list)
-        # Calculate overwrite loss
-        over_action_indices, prob_tens = self.over_ign_tuple_to_idx(
-            gt_actions, over_ign_prob_list)
-        over_loss = self.loss_fn['over'](prob_tens, over_action_indices)
-        over_loss_weight = over_action_indices.shape[0]
-        loss['over'] = over_loss  # / over_loss_weight
+        coref_new_prob_list, new_ignore_list = zip(*action_prob_list)
 
         coref_loss = 0.0
-        if self.training or teacher_forcing:
-            coref_loss = self.calculate_coref_loss(coref_new_prob_list, gt_actions)
-            loss['coref'] = coref_loss  # /len(mention_emb_list)
+        if follow_gt:
+            coref_loss = self.calculate_coref_loss(
+                coref_new_prob_list, gt_actions, rand_fl_list, follow_gt)
+            loss['coref'] = coref_loss
+            # Calculate overwrite loss
+            new_ignore_tens = torch.stack(new_ignore_list, dim=0).cuda()
+            over_action_indices = self.over_ign_tuple_to_idx(
+                gt_actions, rand_fl_list, follow_gt)
+            over_loss = self.loss_fn['over'](new_ignore_tens, over_action_indices)
+            loss['over'] = over_loss
+
             loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
             return loss, action_list, pred_mentions, gt_actions
         else:

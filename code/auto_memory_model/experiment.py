@@ -20,7 +20,6 @@ from auto_memory_model.controller.lru_controller import LRUController
 from auto_memory_model.controller.um_controller import UnboundedMemController
 from auto_memory_model.controller.um_controller_ontonotes import UnboundedMemControllerOntoNotes
 
-NUM_STUCK_EPOCHS = 5
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
@@ -43,8 +42,10 @@ class Experiment:
         self.dataset = dataset
         if self.dataset == 'litbank':
             self.update_frequency = 10
+            self.max_stuck_epochs = 10
         else:
             self.update_frequency = 100
+            self.max_stuck_epochs = 3
 
         self.train_examples, self.dev_examples, self.test_examples \
             = load_data(data_dir, max_segment_len, dataset=self.dataset)
@@ -128,7 +129,7 @@ class Experiment:
         if not self.slurm_id:
             writer = self.writer
 
-        if self.train_info['num_stuck_epochs'] >= NUM_STUCK_EPOCHS:
+        if self.train_info['num_stuck_epochs'] >= self.max_stuck_epochs:
             return
 
         for epoch in range(epochs_done, max_epochs):
@@ -207,7 +208,7 @@ class Experiment:
             if not self.slurm_id:
                 self.writer.flush()
 
-            if self.train_info['num_stuck_epochs'] >= NUM_STUCK_EPOCHS:
+            if self.train_info['num_stuck_epochs'] >= self.max_stuck_epochs:
                 return
 
     def eval_auto_reg(self):
@@ -369,8 +370,6 @@ class Experiment:
     def load_model(self, location):
         checkpoint = torch.load(location)
         self.model.load_state_dict(checkpoint['model'], strict=False)
-        print(type(checkpoint['model']))
-        print(checkpoint['model'].keys())
 
         self.optimizer.load_state_dict(
             checkpoint['optimizer'])

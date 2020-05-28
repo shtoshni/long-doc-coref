@@ -4,7 +4,7 @@ import os
 import subprocess
 
 
-mem_type_list = ['-mem_type fixed_mem ']
+mem_type_list = ['-mem_type fixed_mem ', '-mem_type unbounded ']
 dataset_list = ['-dataset litbank ']
 doc_enc_list = ['-doc_enc ' + mem_type for mem_type in ['overlap']]
 model_size_list = ['-model_size ' + str(model_size) for model_size in ['base']]
@@ -13,14 +13,14 @@ mlp_depth_list = ['-mlp_depth ' + str(mlp_depth) for mlp_depth in [1]]
 dropout_list = ['-dropout_rate ' + str(dropout_rate) for dropout_rate in [0.3]]
 model_loc_list = ['-pretrained_bert_dir /share/data/speech/shtoshni/resources']
 max_segment_list = ['-max_segment_len ' + str(max_segment_len) for max_segment_len in [512]]
-seed = ['-seed 30']
+seed = ['-seed 40']
 cross_val_split_list = ['-cross_val_split ' + str(cross_val_split) for cross_val_split in range(1)]
 
 num_cell_list = ['-num_cells {} '.format(x) for (x) in [20]]
 train_span_model_list = ['-train_span_model -top_span_ratio 0.3 ']
 over_loss_wt_list = ['-over_loss_wt ' + str(over_loss_wt) for over_loss_wt in [1.0]]
 new_ent_wt_list = ['-new_ent_wt ' + str(new_ent_wt) for new_ent_wt in [1.0]]
-ignore_wt_list = ['-ignore_wt ' + str(ignore_wt) for ignore_wt in [0.1, 0.2, 1.0]]
+ignore_wt_list = ['-ignore_wt ' + str(ignore_wt) for ignore_wt in [0.1, 1.0]]
 sample_ignores_list = ['-sample_ignores ' + str(sample_ignores) for sample_ignores in [0.2, 0.3, 0.5]]
 
 
