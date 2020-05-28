@@ -6,21 +6,37 @@ class LRUMemory(BaseFixedMemory):
     def __init__(self, **kwargs):
         super(LRUMemory, self).__init__(**kwargs)
 
-    def predict_action(self, query_vector, ment_score, mem_vectors, last_ment_vectors,
-                       ent_counter, feature_embs, ment_feature_embs, lru_list):
-        coref_new_scores = self.get_coref_new_log_prob(
-            query_vector, ment_score, mem_vectors, last_ment_vectors, ent_counter, feature_embs)
-        # Overwrite vs Ignore
+    def predict_new_or_ignore(self, query_vector, ment_score, mem_vectors,
+                              feature_embs, ment_feature_embs, lru_list):
         lru_cell = lru_list[0]
         mem_fert_input = torch.cat([mem_vectors[lru_cell, :], feature_embs[lru_cell, :]], dim=0)
-        mem_fert = self.fert_mlp(mem_fert_input)
+        ment_fert_input = torch.cat([query_vector, ment_feature_embs], dim=-1)
+        fert_input = torch.stack([mem_fert_input, ment_fert_input], dim=0)
+        fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
 
-        ment_fert = self.ment_fert_mlp(torch.cat([query_vector, ment_feature_embs], dim=-1))
-        over_ign_score = torch.cat([mem_fert, -ment_score, ment_fert], dim=0)
+        over_ign_score = torch.cat([fert_scores, -ment_score], dim=0)
+        return over_ign_score
 
-        return coref_new_scores, over_ign_score
+    def interpret_coref_new_score(self, coref_new_scores):
+        pred_max_idx = torch.argmax(coref_new_scores).item()
+        if pred_max_idx < self.num_cells:
+            # Coref
+            return pred_max_idx, 'c'
+        elif pred_max_idx == self.num_cells:
+            # Overwrite/No Space/Ignore
+            return -1, None
 
-    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
+    def interpret_new_ignore_score(self, overwrite_ign_no_space_scores, lru_cell_idx):
+        over_max_idx = torch.argmax(overwrite_ign_no_space_scores).item()
+        if over_max_idx == 0:
+            return lru_cell_idx, 'o'
+        elif over_max_idx == 1:
+            return -1, 'n'
+        elif over_max_idx == 2:
+            # No space
+            return -1, 'i'
+
+    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata, rand_fl_list,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
@@ -30,9 +46,12 @@ class LRUMemory(BaseFixedMemory):
         if self.entity_rep == 'lstm':
             cell_vectors = torch.zeros_like(mem_vectors)
 
-        action_logit_list = []
-        action_list = []  # argmax actions
+        action_list = []
+        coref_new_list = []  # argmax actions
+        new_ignore_list = []
         last_action_str = '<s>'
+
+        follow_gt = self.training or teacher_forcing
 
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
@@ -41,32 +60,26 @@ class LRUMemory(BaseFixedMemory):
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
             ment_feature_embs = self.get_ment_feature_embs(metadata)
 
-            coref_new_scores, over_ign_score = self.predict_action(
-                query_vector, ment_score, mem_vectors, last_ment_vectors,
-                ent_counter, feature_embs, ment_feature_embs, lru_list)
+            # cond1 = (follow_gt and gt_action_str == 'i' and rand_fl_list[ment_idx] > self.sample_ignores)
+            if not (follow_gt and gt_action_str == 'i' and rand_fl_list[ment_idx] > self.sample_ignores):
+                coref_new_scores = self.get_coref_new_log_prob(query_vector, ment_score, mem_vectors,
+                                                               last_ment_vectors, ent_counter, feature_embs)
+                coref_new_list.append(coref_new_scores)
 
-            coref_new_max_idx = torch.argmax(coref_new_scores).item()
-            if coref_new_max_idx < self.num_cells:
-                pred_action_str = 'c'
-                pred_cell_idx = coref_new_max_idx
-            else:
-                over_ign_max_idx = torch.argmax(over_ign_score).item()
-                if over_ign_max_idx == 0:
-                    pred_action_str = 'o'
-                    pred_cell_idx = lru_list[0]
-                elif over_ign_max_idx == 1:
-                    pred_action_str = 'i'
-                    pred_cell_idx = -1
-                elif over_ign_max_idx == 2:
-                    pred_action_str = 'n'
-                    pred_cell_idx = -1
+                pred_cell_idx, pred_action_str = self.interpret_coref_new_score(coref_new_scores)
 
-            # During training this records the next actions  - during testing it records the
-            # predicted sequence of actions
-            action_logit_list.append((coref_new_scores, over_ign_score))
-            action_list.append((pred_cell_idx, pred_action_str))
+                if (follow_gt and gt_action_str != 'c') or ((not follow_gt) and pred_action_str != 'c'):
+                    new_ignore_score = self.predict_new_or_ignore(
+                        query_vector, ment_score, mem_vectors,
+                        feature_embs, ment_feature_embs, lru_list)
+                    pred_cell_idx, pred_action_str = self.interpret_new_ignore_score(new_ignore_score, lru_list[0])
+                    new_ignore_list.append(new_ignore_score)
 
-            if self.training or teacher_forcing:
+                # During training this records the next actions  - during testing it records the
+                # predicted sequence of actions
+                action_list.append((pred_cell_idx, pred_action_str))
+
+            if follow_gt:
                 # Training - Operate over the ground truth
                 action_str = gt_action_str
                 cell_idx = gt_cell_idx
@@ -122,4 +135,4 @@ class LRUMemory(BaseFixedMemory):
                 lru_list.remove(cell_idx)
                 lru_list.append(cell_idx)
 
-        return action_logit_list, action_list
+        return coref_new_list, new_ignore_list, action_list

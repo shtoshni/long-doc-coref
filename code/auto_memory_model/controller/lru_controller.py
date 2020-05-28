@@ -120,60 +120,57 @@ class LRUController(LearnedFixedMemController):
 
         return actions
 
-    def over_ign_tuple_to_idx(self, action_tuple_list, over_ign_prob_list):
+    def new_ignore_tuple_to_idx(self, action_tuple_list, rand_fl_list, follow_gt):
         action_indices = []
-        prob_list = []
-        rand_fl_list = np.random.random(len(action_tuple_list))
-        for idx, ((cell_idx, action_str), over_ign_prob) in enumerate(zip(action_tuple_list, over_ign_prob_list)):
-            if action_str == 'c':
-                continue
-            elif action_str == 'o':
-                action_indices.append(0)
-            elif action_str == 'i':
-                if self.training and rand_fl_list[idx] > self.sample_ignores:
-                    action_indices.append(-100)
-                else:
-                    action_indices.append(1)
-            elif action_str == 'n':
-                action_indices.append(2)
 
-            prob_list.append(over_ign_prob)
+        for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
+            if action_str != 'c':
+                if action_str == 'o':
+                    action_indices.append(0)
+                elif action_str == 'n':
+                    # No space
+                    action_indices.append(1)
+                elif action_str == 'i':
+                    if follow_gt and rand_fl_list[idx] > self.sample_ignores:
+                        pass
+                    else:
+                        action_indices.append(2)
+
+                # if action_indices[-1] >= 0:
+                #     weight += 1
 
         action_indices = torch.tensor(action_indices).cuda()
-        prob_tens = torch.stack(prob_list, dim=0).cuda()
-        return action_indices, prob_tens
+        return action_indices
 
     def forward(self, example, teacher_forcing=False):
-        """
-        Encode a batch of excerpts.
-        """
-        pred_mentions, gt_actions, mention_emb_list, mention_score_list = self.get_mention_embs_and_actions(example)
+        pred_mentions, gt_actions, mention_emb_list, mention_score_list =\
+            self.get_mention_embs_and_actions(example)
 
         metadata = {}
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(example)}
 
-        action_prob_list, action_list = self.memory_net(
-            mention_emb_list, mention_score_list, gt_actions, metadata,
+        rand_fl_list = np.random.random(len(mention_emb_list))
+        follow_gt = self.training or teacher_forcing
+
+        coref_new_list, new_ignore_list, action_list = self.memory_net(
+            mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
             teacher_forcing=teacher_forcing)
 
         loss = {}
-        coref_new_prob_list, over_ign_prob_list = zip(*action_prob_list)
-        action_prob_tens = torch.stack(coref_new_prob_list, dim=0).cuda()  # M x (cells + 1)
-        action_indices = self.action_to_coref_new_idx(gt_actions)
-
-        # Calculate overwrite loss
-        over_action_indices, prob_tens = self.over_ign_tuple_to_idx(
-            gt_actions, over_ign_prob_list)
-        over_loss = self.loss_fn['over'](prob_tens, over_action_indices)
-        over_loss_weight = over_action_indices.shape[0]
-        loss['over'] = over_loss  # / over_loss_weight
+        action_prob_tens = torch.stack(coref_new_list, dim=0).cuda()  # M x (cells + 1)
+        action_indices = self.action_to_coref_new_idx(gt_actions, rand_fl_list, follow_gt)
 
         coref_loss = self.loss_fn['coref'](action_prob_tens, action_indices)
-        total_weight = len(mention_emb_list)  # Total mentions
 
-        if self.training or teacher_forcing:
-            loss['coref'] = coref_loss  # / total_weight
+        if follow_gt:
+            # Calculate overwrite loss
+            new_ignore_tens = torch.stack(new_ignore_list, dim=0).cuda()
+            new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions, rand_fl_list, follow_gt)
+            over_loss = self.loss_fn['over'](new_ignore_tens, new_ignore_indices)
+            loss['over'] = over_loss  # /over_weight
+
+            loss['coref'] = coref_loss
             loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
             return loss, action_list, pred_mentions, gt_actions
         else:
