@@ -61,7 +61,7 @@ def main():
     parser.add_argument('-mlp_depth', default=1, type=int,
                         help='Number of hidden layers in other MLPs')
     parser.add_argument('-entity_rep', default='avg', type=str,
-                        choices=['lstm', 'gru', 'max', 'avg'],
+                        choices=['lstm', 'gru', 'max', 'avg', 'rec_avg'],
                         help='Entity representation.')
     parser.add_argument('-emb_size', default=20, type=int,
                         help='Embedding size of features.')

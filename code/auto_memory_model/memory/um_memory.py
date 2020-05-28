@@ -4,11 +4,14 @@ from auto_memory_model.memory.base_fixed_memory import BaseMemory
 
 
 class UnboundedMemory(BaseMemory):
-    def __init__(self, **kwargs):
+    def __init__(self, train_span_model=False, **kwargs):
         super(UnboundedMemory, self).__init__(**kwargs)
-        self.not_a_mention = MLP(input_size=self.mem_size, hidden_size=self.mlp_size, output_size=1,
-                                 num_hidden_layers=self.mlp_depth,
-                                 bias=True, drop_module=self.drop_module)
+        self.train_span_model = train_span_model
+
+        if not self.train_span_model:
+            self.not_a_mention = MLP(input_size=self.mem_size, hidden_size=self.mlp_size, output_size=1,
+                                     num_hidden_layers=self.mlp_depth,
+                                     bias=True, drop_module=self.drop_module)
 
     def initialize_memory(self):
         """Initialize the memory to null with only 1 memory cell to begin with."""
@@ -22,8 +25,12 @@ class UnboundedMemory(BaseMemory):
         coref_new_scores = self.get_coref_new_log_prob(
             query_vector, ment_score, mem_vectors, last_ment_vectors, ent_counter, feature_embs)
 
-        not_a_ment_score = self.not_a_mention(query_vector)
-        over_ign_score = torch.cat([torch.tensor([0.0]).cuda(), not_a_ment_score - ment_score], dim=0).cuda()
+        if not self.train_span_model:
+            not_a_ment_score = self.not_a_mention(query_vector)
+        else:
+            # Negate the mention score
+            not_a_ment_score = -ment_score
+        over_ign_score = torch.cat([torch.tensor([0.0]).cuda(), not_a_ment_score], dim=0).cuda()
         # over_ign_score = torch.cat([torch.tensor([0.0]).cuda(), -ment_score], dim=0).cuda()
         return coref_new_scores, over_ign_score
 

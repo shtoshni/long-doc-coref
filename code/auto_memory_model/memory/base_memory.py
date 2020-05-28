@@ -8,7 +8,7 @@ LOG2 = math.log(2)
 class BaseMemory(nn.Module):
     def __init__(self, hsize=300, mlp_size=200, mlp_depth=1, coref_mlp_depth=1,
                  mem_size=None, drop_module=None, emb_size=20, entity_rep='max',
-                 use_last_mention=False, dataset='litbank',
+                 use_last_mention=False, dataset='litbank', sample_ignores=1.0,
                  **kwargs):
         super(BaseMemory, self).__init__()
         self.dataset = dataset
@@ -16,6 +16,8 @@ class BaseMemory(nn.Module):
             self.num_feats = 3
         elif self.dataset == 'ontonotes':
             self.num_feats = 4
+
+        self.sample_ignores = sample_ignores
 
         self.hsize = hsize
         self.mem_size = (mem_size if mem_size is not None else hsize)
@@ -64,8 +66,8 @@ class BaseMemory(nn.Module):
         combined_idx = use_identity * count + (1 - use_identity) * logspace_idx
         return torch.clamp(combined_idx, 0, 9)
 
-    def get_distance_emb(self, ment_idx, last_mention_idx):
-        distance_tens = self.get_distance_bucket(ment_idx - last_mention_idx)
+    def get_distance_emb(self, distance):
+        distance_tens = self.get_distance_bucket(distance)
         distance_embs = self.distance_embeddings(distance_tens)
         return distance_embs
 
@@ -84,7 +86,7 @@ class BaseMemory(nn.Module):
         return cell_mask
 
     def get_feature_embs(self, ment_idx, last_mention_idx, ent_counter, metadata):
-        distance_embs = self.get_distance_emb(ment_idx, last_mention_idx)
+        distance_embs = self.get_distance_emb(ment_idx - last_mention_idx)
         counter_embs = self.get_counter_emb(ent_counter)
 
         feature_embs_list = [distance_embs, counter_embs]
@@ -106,7 +108,10 @@ class BaseMemory(nn.Module):
         return feature_embs
 
     def get_ment_feature_embs(self, metadata):
-        feature_embs_list = []
+        distance_embs = self.get_distance_emb(torch.tensor(0).cuda())
+        counter_embs = self.get_counter_emb(torch.tensor(0).cuda())
+
+        feature_embs_list = [distance_embs, counter_embs]
 
         if 'genre' in metadata:
             genre_emb = metadata['genre']
