@@ -5,6 +5,7 @@ import numpy as np
 from auto_memory_model.memory.um_memory import UnboundedMemory
 from auto_memory_model.controller.base_controller import BaseController
 from auto_memory_model.utils import get_mention_to_cluster, get_ordered_mentions
+# from pytorch_memlab import MemReporter
 
 
 class UnboundedMemController(BaseController):
@@ -17,6 +18,7 @@ class UnboundedMemController(BaseController):
         self.memory_net = UnboundedMemory(
             hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
             drop_module=self.drop_module, **kwargs)
+
         # Set loss functions
         self.loss_fn = {}
         # Overwrite in Unbounded has only 2 classes - Overwrite and Ignore

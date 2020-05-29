@@ -64,6 +64,8 @@ def main():
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=5e-4, type=float)
+    parser.add_argument('-checkpoint', help="Use checkpoint",
+                        default=False, action="store_true")
     parser.add_argument('-eval', help="Evaluate model",
                         default=False, action="store_true")
     parser.add_argument('-slurm_id', help="Slurm ID",

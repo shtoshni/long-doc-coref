@@ -6,7 +6,7 @@ from pytorch_utils.modules import MLP
 
 
 class Controller(BaseController):
-    def __init__(self, mlp_size=1024, mlp_depth=1, max_span_width=30, top_span_ratio=0.4,
+    def __init__(self, mlp_size=1024, mlp_depth=1, max_span_width=30, top_span_ratio=0.4, checkpoint=False,
                  **kwargs):
         super(Controller, self).__init__(**kwargs)
         self.max_span_width = max_span_width
@@ -19,22 +19,18 @@ class Controller(BaseController):
         self.mention_mlp = MLP(input_size=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 20,
                                hidden_size=self.mlp_size,
                                output_size=1, num_hidden_layers=self.mlp_depth, bias=True,
-                               drop_module=self.drop_module)
+                               drop_module=self.drop_module, checkpoint=checkpoint)
         self.span_width_mlp = MLP(input_size=20, hidden_size=self.mlp_size,
                                   output_size=1, num_hidden_layers=1, bias=True,
-                                  drop_module=self.drop_module)
+                                  drop_module=self.drop_module, checkpoint=checkpoint)
         self.mention_loss_fn = nn.BCEWithLogitsLoss(reduction='sum')
 
-    def get_mention_scores(self, span_embs, cand_starts, cand_ends):
-        mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
-
+    def get_mention_width_scores(self, cand_starts, cand_ends):
         span_width_idx = cand_ends - cand_starts
         span_width_embs = self.span_width_prior_embeddings(span_width_idx)
         width_scores = torch.squeeze(self.span_width_mlp(span_width_embs), dim=-1)
 
-        mention_logits += width_scores
-
-        return mention_logits
+        return width_scores
 
     def get_span_embeddings(self, encoded_doc, ment_starts, ment_ends):
         span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
@@ -53,15 +49,17 @@ class Controller(BaseController):
             word_attn = torch.squeeze(self.mention_attn(encoded_doc), dim=1)  # [T]
             mention_word_attn = nn.functional.softmax(
                 (1 - ment_masks.float()) * (-1e10) + torch.unsqueeze(word_attn, dim=0), dim=1)  # [C x T]
-            attention_term = torch.matmul(mention_word_attn, encoded_doc)  # K x H
 
+            del ment_masks
+
+            attention_term = torch.matmul(mention_word_attn, encoded_doc)  # C x H
             span_emb_list.append(attention_term)
 
         span_embs = torch.cat(span_emb_list, dim=-1)
         return span_embs
 
-    def get_gold_mentions(self, clusters, cand_starts, flat_cand_mask):
-        gold_ments = torch.zeros_like(cand_starts).cuda()
+    def get_gold_mentions(self, clusters, num_words, flat_cand_mask):
+        gold_ments = torch.zeros(num_words, self.max_span_width).cuda()
         for cluster in clusters:
             for (span_start, span_end) in cluster:
                 span_width = span_end - span_start + 1
@@ -73,11 +71,7 @@ class Controller(BaseController):
         # assert(torch.sum(gold_ments) == torch.sum(filt_gold_ments))  # Filtering shouldn't remove gold mentions
         return filt_gold_ments
 
-    def forward(self, example):
-        """
-        Encode a batch of excerpts.
-        """
-        encoded_doc = self.doc_encoder(example)
+    def get_candidate_endpoints(self, encoded_doc, example):
         num_words = encoded_doc.shape[0]
 
         sent_map = torch.tensor(example["sentence_map"]).cuda()
@@ -99,27 +93,43 @@ class Controller(BaseController):
         # Filter and flatten the candidate end points
         filt_cand_starts = cand_starts.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
+        return filt_cand_starts, filt_cand_ends, flat_cand_mask
+
+    def forward(self, example):
+        """
+        Encode a batch of excerpts.
+        """
+        encoded_doc = self.doc_encoder(example)
+        num_words = encoded_doc.shape[0]
+
+        filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, example)
 
         span_embs = self.get_span_embeddings(encoded_doc, filt_cand_starts, filt_cand_ends)
-        mention_scores = self.get_mention_scores(span_embs, filt_cand_starts, filt_cand_ends)
 
-        filt_gold_mentions = self.get_gold_mentions(example["clusters"], cand_starts, flat_cand_mask)
+        # Encoded doc not needed now
+        del encoded_doc
 
-        mention_loss = self.mention_loss_fn(mention_scores, filt_gold_mentions)
-        total_weight = filt_cand_starts.shape[0]
+        mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
+        # Span embeddings not needed anymore
+        del span_embs
+        mention_logits += self.get_mention_width_scores(filt_cand_starts, filt_cand_ends)
+
+        filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
 
         if self.training:
+            mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
+            total_weight = filt_cand_starts.shape[0]
+
             loss = {'mention': mention_loss / total_weight}
             return loss
 
         else:
-            pred_mention_probs = torch.sigmoid(mention_scores)
+            pred_mention_probs = torch.sigmoid(mention_logits)
             # Calculate Recall
             k = int(self.top_span_ratio * num_words)
-            topk_indices = torch.topk(mention_scores, k)[1]
-            topk_indices_mask = torch.zeros_like(mention_scores).cuda()
+            topk_indices = torch.topk(mention_logits, k)[1]
+            topk_indices_mask = torch.zeros_like(mention_logits).cuda()
             topk_indices_mask[topk_indices] = 1
             recall = torch.sum(filt_gold_mentions * topk_indices_mask).item()
 
-            return (mention_loss, total_weight, pred_mention_probs, filt_gold_mentions,
-                    filt_cand_starts, filt_cand_ends, recall)
+            return pred_mention_probs, filt_gold_mentions, filt_cand_starts, filt_cand_ends, recall

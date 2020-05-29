@@ -113,7 +113,7 @@ class BaseController(nn.Module):
 
         return mention_logits
 
-    def get_pred_mentions(self, example, encoded_doc):
+    def get_candidate_endpoints(self, encoded_doc, example):
         num_words = encoded_doc.shape[0]
 
         sent_map = torch.tensor(example["sentence_map"]).cuda()
@@ -135,6 +135,13 @@ class BaseController(nn.Module):
         # Filter and flatten the candidate end points
         filt_cand_starts = cand_starts.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
+        return filt_cand_starts, filt_cand_ends, flat_cand_mask
+
+    def get_pred_mentions(self, example, encoded_doc):
+        encoded_doc = self.doc_encoder(example)
+        num_words = encoded_doc.shape[0]
+
+        filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, example)
 
         span_embs = self.get_span_embeddings(encoded_doc, filt_cand_starts, filt_cand_ends)
         mention_scores = self.get_mention_scores(span_embs, filt_cand_starts, filt_cand_ends)

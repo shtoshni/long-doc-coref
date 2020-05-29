@@ -1,12 +1,16 @@
 import torch
 from pytorch_utils.modules import MLP
 from auto_memory_model.memory.base_fixed_memory import BaseMemory
+from pytorch_memlab import MemReporter
 
 
 class UnboundedMemory(BaseMemory):
     def __init__(self, train_span_model=False, **kwargs):
         super(UnboundedMemory, self).__init__(**kwargs)
         self.train_span_model = train_span_model
+
+        # verbose shows how storage is shared across multiple Tensors
+        self.reporter = MemReporter(self.mem_coref_mlp)
 
         if not self.train_span_model:
             self.not_a_mention = MLP(input_size=self.mem_size, hidden_size=self.mlp_size, output_size=1,
@@ -74,6 +78,7 @@ class UnboundedMemory(BaseMemory):
 
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
+            # print(torch.cuda.memory_allocated())
             query_vector = ment_emb
             metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
@@ -107,8 +112,6 @@ class UnboundedMemory(BaseMemory):
                 ent_counter = torch.tensor([1.0]).cuda()
                 last_mention_idx[0] = ment_idx
             else:
-                # During training this records the next actions  - during testing it records the
-                # predicted sequence of actions
                 num_ents = mem_vectors.shape[0]
                 # Update the memory
                 rep_query_vector = query_vector.repeat(num_ents, 1)  # M x H
@@ -118,25 +121,13 @@ class UnboundedMemory(BaseMemory):
 
                 # print(cell_idx, action_str, mem_vectors.shape[0])
                 if action_str == 'c':
-                    # Update memory vector corresponding to cell_idx
-                    if self.entity_rep == 'lstm':
-                        cand_vec, cand_cell_vec = self.mem_rnn(
-                                rep_query_vector, (mem_vectors, cell_vectors))
-                        cell_vectors = cell_vectors * (1 - mask) + mask * cand_cell_vec
-                    elif self.entity_rep == 'gru':
-                        cand_vec = self.mem_rnn(rep_query_vector, mem_vectors)
-                        mem_vectors = mem_vectors * (1 - mask) + mask * cand_vec
-                    elif self.entity_rep == 'max':
-                        # Max pool coref operation
-                        max_pool_vec = torch.max(
-                            torch.stack([mem_vectors, rep_query_vector], dim=0), dim=0)[0]
-                        mem_vectors = mem_vectors * (1 - mask) + mask * max_pool_vec
-                    elif self.entity_rep == 'avg':
+                    if self.entity_rep == 'avg':
                         total_counts = torch.unsqueeze((ent_counter + 1).float(), dim=1)
                         pool_vec_num = (mem_vectors * torch.unsqueeze(ent_counter, dim=1)
                                         + rep_query_vector)
                         avg_pool_vec = pool_vec_num/total_counts
                         mem_vectors = mem_vectors * (1 - mask) + mask * avg_pool_vec
+                        # mem_vectors[cell_idx, :] = mem_vectors[cell_idx, :] + query_vector
 
                     # Update last mention vector
                     last_ment_vectors = last_ment_vectors * (1 - mask) + mask * rep_query_vector

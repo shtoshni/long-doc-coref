@@ -113,31 +113,40 @@ class Experiment:
             model.train()
             np.random.shuffle(self.train_examples)
 
-            for train_example in self.train_examples:
-                self.train_info['global_steps'] += 1
-                loss = model(train_example)
-                total_loss = loss['mention']
-                if not self.slurm_id:
-                    writer.add_scalar(
-                        "Loss/Total", total_loss,
-                        self.train_info['global_steps'])
+            for idx, cur_example in enumerate(self.train_examples):
+                def handle_example(train_example):
+                    self.train_info['global_steps'] += 1
+                    loss = model(train_example)
+                    total_loss = loss['mention']
+                    if not self.slurm_id:
+                        writer.add_scalar(
+                            "Loss/Total", total_loss,
+                            self.train_info['global_steps'])
 
-                if torch.isnan(total_loss):
-                    print("Loss is NaN")
-                    sys.exit()
-                # Backprop
-                optimizer.zero_grad()
-                total_loss.backward()
-                # Perform gradient clipping and update parameters
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_gradient_norm)
+                    if torch.isnan(total_loss):
+                        print("Loss is NaN")
+                        sys.exit()
+                    # Backprop
+                    optimizer.zero_grad()
+                    total_loss.backward()
+                    # Perform gradient clipping and update parameters
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_gradient_norm)
 
-                optimizer.step()
+                    optimizer.step()
+
+                handle_example(cur_example)
+
+                if (idx + 1) % 50 == 0:
+                    print("Steps %d, Max memory %.3f" % (idx + 1, (torch.cuda.max_memory_allocated() / (1024 ** 3))))
+                    torch.cuda.reset_max_memory_allocated()
+                    # print("Current memory %.3f" % (torch.cuda.memory_allocated() / (1024 ** 3)))
+                    # print(torch.cuda.memory_summary())
 
             # Update epochs done
             self.train_info['epoch'] = epoch + 1
             # Validation performance
-            val_loss, fscore, threshold = self.eval_model()
+            fscore, threshold = self.eval_model()
 
             scheduler.step(fscore)
 
@@ -157,9 +166,8 @@ class Experiment:
 
             # Get elapsed time
             elapsed_time = time.time() - start_time
-            logging.info("Epoch: %d, Time: %.2f, F-score: %.3f Loss: %.3f"
-                         % (epoch + 1, elapsed_time, fscore,
-                            val_loss))
+            logging.info("Epoch: %d, Time: %.2f, F-score: %.3f"
+                         % (epoch + 1, elapsed_time, fscore))
 
             sys.stdout.flush()
             if not self.slurm_id:
@@ -180,18 +188,13 @@ class Experiment:
         dev_examples = self.data_iter_map[split]
 
         with torch.no_grad():
-            total_loss = 0.0
-            total_weight = 0.0
             total_recall = 0
             total_gold = 0.0
             all_golds = 0.0
             # Output file to write the outputs
             agg_results = {}
             for dev_example in dev_examples:
-                example_loss, example_weight, preds, y, cand_starts, cand_ends, recall = model(dev_example)
-
-                total_loss += example_loss.item()
-                total_weight += example_weight
+                preds, y, cand_starts, cand_ends, recall = model(dev_example)
 
                 all_golds += sum([len(cluster) for cluster in dev_example["clusters"]])
                 total_gold += torch.sum(y).item()
@@ -226,7 +229,6 @@ class Experiment:
                         recall = x['corr']/x['total_y']
                         x['fscore'] = 2 * prec * recall/(prec + recall + EPS)
 
-        avg_loss = total_loss/total_weight
         if threshold:
             max_fscore = agg_results[threshold]['fscore']
         else:
@@ -241,7 +243,7 @@ class Experiment:
         print(total_recall, total_gold)
         print(total_recall, all_golds)
         logging.info("Recall: %.3f" % (total_recall/total_gold))
-        return avg_loss, max_fscore, threshold
+        return max_fscore, threshold
 
     def final_eval(self, model_dir):
         """Evaluate the model on train, dev, and test"""

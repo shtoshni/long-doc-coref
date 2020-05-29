@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from pytorch_utils.modules import MLP
 import math
+from pytorch_memlab import MemReporter
+import torch.utils.checkpoint
 
 LOG2 = math.log(2)
 
@@ -135,7 +137,8 @@ class BaseMemory(nn.Module):
         pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector,
                               feature_embs], dim=-1)
 
-        pair_score = self.mem_coref_mlp(pair_vec)
+        # pair_score = self.mem_coref_mlp(pair_vec)
+        pair_score = torch.utils.checkpoint.checkpoint(self.mem_coref_mlp, pair_vec)
         coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
 
         if self.use_last_mention:

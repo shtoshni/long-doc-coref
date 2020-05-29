@@ -18,7 +18,8 @@ import pytorch_utils.utils as utils
 from auto_memory_model.controller.lfm_controller import LearnedFixedMemController
 from auto_memory_model.controller.lru_controller import LRUController
 from auto_memory_model.controller.um_controller import UnboundedMemController
-from auto_memory_model.controller.um_controller_ontonotes import UnboundedMemControllerOntoNotes
+from pytorch_memlab import MemReporter
+
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
@@ -142,35 +143,43 @@ class Experiment:
             pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
             # errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0), ("WO", 0),
             #                       ("FL", 0), ("C", 0)])
-            for example in self.train_examples:
-                self.train_info['global_steps'] += 1
-                loss, pred_action_list, pred_mentions, gt_actions = model(example)
-                # batch_errors = classify_errors(pred_action_list, gt_actions)
-                # for key in errors:
-                #     errors[key] += batch_errors[key]
-                for pred_action, gt_action in zip(pred_action_list, gt_actions):
-                    pred_class_counter[pred_action[1]] += 1
-                    gt_class_counter[gt_action[1]] += 1
+            for cur_example in self.train_examples:
+                def handle_example(example):
+                    self.train_info['global_steps'] += 1
+                    loss, pred_action_list, pred_mentions, gt_actions = model(example)
 
-                total_loss = loss['total']
-                batch_loss += total_loss.item()
-                if not self.slurm_id:
-                    writer.add_scalar("Loss/Total", total_loss, self.train_info['global_steps'])
+                    for pred_action, gt_action in zip(pred_action_list, gt_actions):
+                        pred_class_counter[pred_action[1]] += 1
+                        gt_class_counter[gt_action[1]] += 1
 
-                if torch.isnan(total_loss):
-                    print("Loss is NaN")
-                    sys.exit()
-                # Backprop
-                optimizer.zero_grad()
-                total_loss.backward()
-                # Perform gradient clipping and update parameters
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_gradient_norm)
+                    total_loss = loss['total']
+                    if not self.slurm_id:
+                        writer.add_scalar("Loss/Total", total_loss, self.train_info['global_steps'])
 
-                optimizer.step()
+                    if torch.isnan(total_loss):
+                        print("Loss is NaN")
+                        sys.exit()
+                    # Backprop
+                    optimizer.zero_grad()
+                    total_loss.backward()
+                    # Perform gradient clipping and update parameters
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_gradient_norm)
+
+                    optimizer.step()
+
+                    return total_loss.item()
+
+                example_loss = handle_example(cur_example)
+                # self.model.memory_net.reporter.report(verbose=True)
+                # sys.exit()
 
                 if self.train_info['global_steps'] % self.update_frequency == 0:
-                    logging.info('{} {:.3f}'.format(example["doc_key"], total_loss.item()))
+                    logging.info('{} {:.3f} Max mem {:.3f} GB  Current mem {:.3f} GB'.format(
+                        cur_example["doc_key"], example_loss,
+                        (torch.cuda.max_memory_allocated() / (1024 ** 3)),
+                        (torch.cuda.memory_allocated() / (1024 ** 3)),
+                    ))
 
             # print("Ground Truth Actions:", gt_class_counter)
             # print("Predicted Actions:", pred_class_counter)
@@ -200,9 +209,8 @@ class Experiment:
 
             # Get elapsed time
             elapsed_time = time.time() - start_time
-            logging.info("Epoch: %d, F1: %.1f, Max F1: %.1f, Time: %.2f, Loss: %.3f, Val Loss: %.3f"
-                         % (epoch + 1, fscore, self.train_info['val_perf'], elapsed_time,
-                            batch_loss/len(self.train_examples), val_loss))
+            logging.info("Epoch: %d, F1: %.1f, Max F1: %.1f, Time: %.2f, Val Loss: %.3f"
+                         % (epoch + 1, fscore, self.train_info['val_perf'], elapsed_time, val_loss))
 
             sys.stdout.flush()
             if not self.slurm_id:
