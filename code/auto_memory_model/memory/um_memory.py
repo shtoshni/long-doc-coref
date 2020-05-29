@@ -30,7 +30,7 @@ class UnboundedMemory(BaseMemory):
             query_vector, ment_score, mem_vectors, last_ment_vectors, ent_counter, feature_embs)
 
         if not self.train_span_model:
-            not_a_ment_score = self.not_a_mention(query_vector)
+            not_a_ment_score = self.not_a_mention(query_vector) - ment_score
         else:
             # Negate the mention score
             not_a_ment_score = -ment_score

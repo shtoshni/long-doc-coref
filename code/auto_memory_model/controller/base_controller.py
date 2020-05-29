@@ -93,25 +93,27 @@ class BaseController(nn.Module):
             doc_range = torch.unsqueeze(torch.arange(num_words), 0).repeat(num_c, 1).cuda()  # [C x T]
             ment_masks = ((doc_range >= torch.unsqueeze(ment_starts, dim=1)) &
                           (doc_range <= torch.unsqueeze(ment_ends, dim=1)))  # [C x T]
+
+            del doc_range
+
             word_attn = torch.squeeze(self.mention_attn(encoded_doc), dim=1)  # [T]
             mention_word_attn = nn.functional.softmax(
                 (1 - ment_masks.float()) * (-1e10) + torch.unsqueeze(word_attn, dim=0), dim=1)  # [C x T]
-            attention_term = torch.matmul(mention_word_attn, encoded_doc)  # K x H
 
+            del word_attn
+            del ment_masks
+
+            attention_term = torch.matmul(mention_word_attn, encoded_doc)  # K x H
             span_emb_list.append(attention_term)
 
         return torch.cat(span_emb_list, dim=1)
 
-    def get_mention_scores(self, span_embs, cand_starts, cand_ends):
-        mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
-
+    def get_mention_width_scores(self, cand_starts, cand_ends):
         span_width_idx = cand_ends - cand_starts
         span_width_embs = self.span_width_prior_embeddings(span_width_idx)
         width_scores = torch.squeeze(self.span_width_mlp(span_width_embs), dim=-1)
 
-        mention_logits += width_scores
-
-        return mention_logits
+        return width_scores
 
     def get_candidate_endpoints(self, encoded_doc, example):
         num_words = encoded_doc.shape[0]
@@ -135,23 +137,26 @@ class BaseController(nn.Module):
         # Filter and flatten the candidate end points
         filt_cand_starts = cand_starts.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
-        return filt_cand_starts, filt_cand_ends, flat_cand_mask
+        return filt_cand_starts, filt_cand_ends
 
     def get_pred_mentions(self, example, encoded_doc):
-        encoded_doc = self.doc_encoder(example)
         num_words = encoded_doc.shape[0]
 
-        filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, example)
+        filt_cand_starts, filt_cand_ends = self.get_candidate_endpoints(encoded_doc, example)
 
         span_embs = self.get_span_embeddings(encoded_doc, filt_cand_starts, filt_cand_ends)
-        mention_scores = self.get_mention_scores(span_embs, filt_cand_starts, filt_cand_ends)
+
+        mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
+        # Span embeddings not needed anymore
+        del span_embs
+        mention_logits += self.get_mention_width_scores(filt_cand_starts, filt_cand_ends)
 
         k = int(self.top_span_ratio * num_words)
-        topk_indices = torch.topk(mention_scores, k)[1]
+        topk_indices = torch.topk(mention_logits, k)[1]
 
         topk_starts = filt_cand_starts[topk_indices]
         topk_ends = filt_cand_ends[topk_indices]
-        topk_scores = mention_scores[topk_indices]
+        topk_scores = mention_logits[topk_indices]
 
         # Sort the mentions by (start) and tiebreak with (end)
         sort_scores = topk_starts + 1e-5 * topk_ends
