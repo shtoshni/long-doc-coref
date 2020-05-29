@@ -123,22 +123,24 @@ class UnboundedMemController(BaseController):
             mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
             teacher_forcing=teacher_forcing)
 
-        loss = {}
-        coref_new_prob_list, new_ignore_list = zip(*action_prob_list)
-
         coref_loss = 0.0
+        loss = {'total': None}
         if follow_gt:
-            coref_loss = self.calculate_coref_loss(
-                coref_new_prob_list, gt_actions, rand_fl_list, follow_gt)
-            loss['coref'] = coref_loss
-            # Calculate overwrite loss
-            new_ignore_tens = torch.stack(new_ignore_list, dim=0).cuda()
-            over_action_indices = self.over_ign_tuple_to_idx(
-                gt_actions, rand_fl_list, follow_gt)
-            over_loss = self.loss_fn['over'](new_ignore_tens, over_action_indices)
-            loss['over'] = over_loss
+            if len(action_prob_list) > 0:
+                coref_new_prob_list, new_ignore_list = zip(*action_prob_list)
+                loss = {}
+                coref_loss = self.calculate_coref_loss(
+                    coref_new_prob_list, gt_actions, rand_fl_list, follow_gt)
+                loss['coref'] = coref_loss
+                # Calculate overwrite loss
+                new_ignore_tens = torch.stack(new_ignore_list, dim=0).cuda()
+                over_action_indices = self.over_ign_tuple_to_idx(
+                    gt_actions, rand_fl_list, follow_gt)
+                over_loss = self.loss_fn['over'](new_ignore_tens, over_action_indices)
+                loss['over'] = over_loss
 
-            loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
+                loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
+
             return loss, action_list, pred_mentions, gt_actions
         else:
             return coref_loss, action_list, pred_mentions, gt_actions

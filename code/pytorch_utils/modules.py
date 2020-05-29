@@ -42,7 +42,7 @@ class MLP(nn.Module):
             self.dummy_tensor = torch.ones(1, dtype=torch.float32, requires_grad=True)
             self.module_wrapper = ModuleWrapperIgnores2ndArg(self.fc_layers)
 
-    def forward(self, mlp_input):
+    def forward(self, mlp_input, dummy_input=None):
         if self.use_checkpoint:
             output = checkpoint(self.module_wrapper, mlp_input, self.dummy_tensor)
         else:

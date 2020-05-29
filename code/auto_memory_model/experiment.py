@@ -143,7 +143,15 @@ class Experiment:
             pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
             # errors = OrderedDict([("WL", 0), ("FN", 0), ("WF", 0), ("WO", 0),
             #                       ("FL", 0), ("C", 0)])
+
+            ### CHANGE THIS
+            # self.update_frequency = 1
             for cur_example in self.train_examples:
+                # print(cur_example["doc_key"], len(cur_example["sentence_map"]))
+                if cur_example["doc_key"] == "nw/wsj/20/wsj_2013_0":
+                    # Too long
+                    continue
+
                 def handle_example(example):
                     self.train_info['global_steps'] += 1
                     loss, pred_action_list, pred_mentions, gt_actions = model(example)
@@ -153,6 +161,9 @@ class Experiment:
                         gt_class_counter[gt_action[1]] += 1
 
                     total_loss = loss['total']
+                    if total_loss is None:
+                        return None
+
                     if not self.slurm_id:
                         writer.add_scalar("Loss/Total", total_loss, self.train_info['global_steps'])
 
@@ -175,11 +186,11 @@ class Experiment:
                 # sys.exit()
 
                 if self.train_info['global_steps'] % self.update_frequency == 0:
-                    logging.info('{} {:.3f} Max mem {:.3f} GB  Current mem {:.3f} GB'.format(
+                    logging.info('{} {:.3f} Max mem {:.3f} GB'.format(
                         cur_example["doc_key"], example_loss,
-                        (torch.cuda.max_memory_allocated() / (1024 ** 3)),
-                        (torch.cuda.memory_allocated() / (1024 ** 3)),
-                    ))
+                        (torch.cuda.max_memory_allocated() / (1024 ** 3)))
+                    )
+                    torch.cuda.reset_max_memory_allocated()
 
             # print("Ground Truth Actions:", gt_class_counter)
             # print("Predicted Actions:", pred_class_counter)

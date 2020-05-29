@@ -259,7 +259,7 @@ class Experiment:
             for split in ['Train', 'Valid', 'Test']:
                 logging.info('\n')
                 logging.info('%s' % split)
-                split_loss, split_f1, _ = self.eval_model(
+                split_f1, _ = self.eval_model(
                     split.lower(), threshold=threshold)
                 logging.info('Calculated F1: %.3f' % split_f1)
 

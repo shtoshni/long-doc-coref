@@ -37,11 +37,11 @@ def main():
                         help='Max segment length of BERT segments.')
 
     # Mention variables
-    parser.add_argument('-max_span_width', default=30, type=int,
+    parser.add_argument('-max_span_width', default=20, type=int,
                         help='Max span width.')
     parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'endpoint'],
                         type=str, help='If true use an RNN on top of mention embeddings.')
-    parser.add_argument('-top_span_ratio', default=0.4, type=float,
+    parser.add_argument('-top_span_ratio', default=0.3, type=float,
                         help='Ratio of top spans proposed as mentions.')
     parser.add_argument('-train_span_model', default=False, action="store_true",
                         help="Whether to keep the mention detection model frozen or fine-tuned.")
@@ -85,6 +85,8 @@ def main():
                         default=1.0, type=float)
     parser.add_argument('-dropout_rate', default=0.3, type=float,
                         help='Dropout rate')
+    parser.add_argument('-checkpoint', help="Use checkpoint",
+                        default=False, action="store_true")
     parser.add_argument('-max_epochs',
                         help='Maximum number of epochs', default=30, type=int)
     parser.add_argument('-seed', default=0,

@@ -161,7 +161,6 @@ class BaseController(nn.Module):
 
     def get_mention_embs_and_actions(self, example):
         encoded_doc = self.doc_encoder(example)
-
         pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
 
         # Sort the predicted mentions
@@ -171,8 +170,8 @@ class BaseController(nn.Module):
         gt_actions = self.get_actions(pred_mentions, example["clusters"])
         mention_embs = self.get_span_embeddings(
             encoded_doc, pred_starts, pred_ends)
-        mention_emb_list = torch.unbind(mention_embs, dim=0)
 
+        mention_emb_list = torch.unbind(mention_embs, dim=0)
         return pred_mentions, gt_actions, mention_emb_list, pred_scores
 
     def get_genre_embedding(self, examples):

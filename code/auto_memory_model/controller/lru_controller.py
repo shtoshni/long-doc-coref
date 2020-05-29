@@ -15,7 +15,7 @@ class LRUController(LearnedFixedMemController):
 
         # Set loss functions
         # Overwrite in LRU has only 2 classes - Overwrite (LRU cell) and Ignore
-        over_loss_wts = torch.tensor([1.0] + [self.ignore_wt] + [1.0]).cuda()
+        over_loss_wts = torch.tensor([1.0] + [1.0] + [self.ignore_wt]).cuda()
         self.loss_fn['over'] = nn.CrossEntropyLoss(weight=over_loss_wts, reduction='sum')
 
     def get_actions(self, pred_mentions, gt_clusters):
@@ -157,22 +157,28 @@ class LRUController(LearnedFixedMemController):
             mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
             teacher_forcing=teacher_forcing)
 
-        loss = {}
-        action_prob_tens = torch.stack(coref_new_list, dim=0).cuda()  # M x (cells + 1)
-        action_indices = self.action_to_coref_new_idx(gt_actions, rand_fl_list, follow_gt)
+        del mention_emb_list
 
-        coref_loss = self.loss_fn['coref'](action_prob_tens, action_indices)
-
+        loss = {'total': None}
         if follow_gt:
-            # Calculate overwrite loss
-            new_ignore_tens = torch.stack(new_ignore_list, dim=0).cuda()
-            new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions, rand_fl_list, follow_gt)
-            over_loss = self.loss_fn['over'](new_ignore_tens, new_ignore_indices)
-            loss['over'] = over_loss  # /over_weight
+            if len(coref_new_list) > 0:
+                loss = {}
+                action_prob_tens = torch.stack(coref_new_list, dim=0).cuda()  # M x (cells + 1)
+                action_indices = self.action_to_coref_new_idx(gt_actions, rand_fl_list, follow_gt)
 
-            loss['coref'] = coref_loss
-            loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
+                coref_loss = self.loss_fn['coref'](action_prob_tens, action_indices)
+                loss['coref'] = coref_loss
+
+                # Calculate overwrite loss
+                new_ignore_tens = torch.stack(new_ignore_list, dim=0).cuda()
+                new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions, rand_fl_list, follow_gt)
+                over_loss = self.loss_fn['over'](new_ignore_tens, new_ignore_indices)
+                loss['over'] = over_loss  # /over_weight
+
+                loss['total'] = loss['coref'] + self.over_loss_wt * loss['over']
+
             return loss, action_list, pred_mentions, gt_actions
         else:
-            return coref_loss, action_list, pred_mentions, gt_actions
+            return 0.0, action_list, pred_mentions, gt_actions
+
 

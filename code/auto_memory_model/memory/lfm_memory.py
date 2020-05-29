@@ -22,23 +22,23 @@ class LearnedFixedMemory(BaseFixedMemory):
     def predict_new_or_ignore(self, query_vector, ment_score, mem_vectors,
                               ent_counter, feature_embs, ment_feature_embs):
         # Fertility Score
-        # mem_fert_input = torch.cat([mem_vectors, feature_embs], dim=-1)
-        # mem_fert = torch.squeeze(self.fert_mlp(mem_fert_input), dim=-1)
-        #
-        # ment_fert = self.ment_fert_mlp(torch.cat([query_vector, ment_feature_embs], dim=-1))
-        # overwrite_ign_no_space_scores = torch.cat([mem_fert, ment_fert, -ment_score], dim=0)
-
         mem_fert_input = torch.cat([mem_vectors, feature_embs], dim=-1)
         ment_fert_input = torch.unsqueeze(torch.cat([query_vector, ment_feature_embs], dim=-1), dim=0)
         fert_input = torch.cat([mem_fert_input, ment_fert_input], dim=0)
-        fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
 
-        overwrite_ign_no_space_scores = torch.cat([fert_scores, -ment_score], dim=0)
+        del mem_fert_input
+        del ment_fert_input
+
+        fert_scores = self.fert_mlp(fert_input)
+        fert_scores = torch.squeeze(fert_scores, dim=-1)
+        del fert_input
+
+        new_or_ignore_scores = torch.cat([fert_scores, -ment_score], dim=0)
 
         overwrite_ign_mask = self.get_overwrite_ign_mask(ent_counter)
-        overwrite_ign_no_space_scores = overwrite_ign_no_space_scores * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
+        new_or_ignore_scores = new_or_ignore_scores * overwrite_ign_mask + (1 - overwrite_ign_mask) * (-1e4)
 
-        return overwrite_ign_no_space_scores
+        return new_or_ignore_scores
 
     def interpret_coref_new_score(self, coref_new_scores):
         pred_max_idx = torch.argmax(coref_new_scores).item()
@@ -78,12 +78,13 @@ class LearnedFixedMemory(BaseFixedMemory):
         for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
-            metadata['last_action'] = self.action_str_to_idx[last_action_str]
-            feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
-            ment_feature_embs = self.get_ment_feature_embs(metadata)
 
             # cond1 = (follow_gt and gt_action_str == 'i' and rand_fl_list[ment_idx] > self.sample_ignores)
             if not (follow_gt and gt_action_str == 'i' and rand_fl_list[ment_idx] > self.sample_ignores):
+                metadata['last_action'] = self.action_str_to_idx[last_action_str]
+                feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
+                ment_feature_embs = self.get_ment_feature_embs(metadata)
+
                 coref_new_scores = self.get_coref_new_log_prob(query_vector, ment_score, mem_vectors,
                                                                last_ment_vectors, ent_counter, feature_embs)
                 coref_new_list.append(coref_new_scores)
@@ -121,19 +122,7 @@ class LearnedFixedMemory(BaseFixedMemory):
 
             if action_str == 'c':
                 # Update memory vector corresponding to cell_idx
-                if self.entity_rep == 'lstm':
-                    cand_vec, cand_cell_vec = self.mem_rnn(
-                            rep_query_vector, (mem_vectors, cell_vectors))
-                    cell_vectors = cell_vectors * (1 - mask) + mask * cand_cell_vec
-                elif self.entity_rep == 'gru':
-                    cand_vec = self.mem_rnn(rep_query_vector, mem_vectors)
-                    mem_vectors = mem_vectors * (1 - mask) + mask * cand_vec
-                elif self.entity_rep == 'max':
-                    # Max pool coref operation
-                    max_pool_vec = torch.max(
-                        torch.stack([mem_vectors, rep_query_vector], dim=0), dim=0)[0]
-                    mem_vectors = mem_vectors * (1 - mask) + mask * max_pool_vec
-                elif self.entity_rep == 'avg':
+                if self.entity_rep == 'avg':
                     total_counts = torch.unsqueeze((ent_counter + 1).float(), dim=1)
                     pool_vec_num = (mem_vectors * torch.unsqueeze(ent_counter, dim=1)
                                     + rep_query_vector)

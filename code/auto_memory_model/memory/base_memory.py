@@ -11,8 +11,9 @@ class BaseMemory(nn.Module):
     def __init__(self, hsize=300, mlp_size=200, mlp_depth=1, coref_mlp_depth=1,
                  mem_size=None, drop_module=None, emb_size=20, entity_rep='max',
                  use_last_mention=False, dataset='litbank', sample_ignores=1.0,
-                 **kwargs):
+                 checkpoint=False, **kwargs):
         super(BaseMemory, self).__init__()
+        self.checkpoint = checkpoint
         self.dataset = dataset
         if self.dataset == 'litbank':
             self.num_feats = 3
@@ -110,8 +111,9 @@ class BaseMemory(nn.Module):
         return feature_embs
 
     def get_ment_feature_embs(self, metadata):
-        distance_embs = self.get_distance_emb(torch.tensor(0).cuda())
-        counter_embs = self.get_counter_emb(torch.tensor(0).cuda())
+        # Bucket is 0 for both the embeddings
+        distance_embs = self.distance_embeddings(torch.tensor(0).cuda())
+        counter_embs = self.counter_embeddings(torch.tensor(0).cuda())
 
         feature_embs_list = [distance_embs, counter_embs]
 
@@ -136,9 +138,16 @@ class BaseMemory(nn.Module):
         # Coref Score
         pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector,
                               feature_embs], dim=-1)
+        if self.checkpoint:
+            pair_score = torch.utils.checkpoint.checkpoint(
+                self.mem_coref_mlp, pair_vec,
+                # Dummy input
+                torch.ones(1, dtype=torch.float32, requires_grad=True))
+        else:
+            pair_score = self.mem_coref_mlp(pair_vec)
 
-        # pair_score = self.mem_coref_mlp(pair_vec)
-        pair_score = torch.utils.checkpoint.checkpoint(self.mem_coref_mlp, pair_vec)
+        del pair_vec
+
         coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
 
         if self.use_last_mention:
