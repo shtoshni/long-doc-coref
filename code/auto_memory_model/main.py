@@ -6,7 +6,7 @@ import logging
 import subprocess
 from collections import OrderedDict
 
-from experiment import Experiment
+from auto_memory_model.experiment import Experiment
 from mention_model.utils import get_mention_model_name
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -109,7 +109,7 @@ def main():
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio', 'train_span_model',  # Mention model
                 'mem_type', 'num_cells', 'mem_size', 'entity_rep', 'mlp_size', 'mlp_depth',
                 'coref_mlp_depth', 'emb_size', 'use_last_mention',  # Memory params
-                'max_epochs', 'dropout_rate', 'batch_size', 'seed', 'init_lr',
+                'dropout_rate', 'batch_size', 'seed', 'init_lr',
                 'ignore_wt', 'over_loss_wt',  "new_ent_wt", 'sample_ignores',  # weights & sampling
                 'dataset', 'num_train_docs', 'cross_val_split',   # Training params
                 ]
@@ -123,6 +123,7 @@ def main():
 
     model_dir = path.join(args.base_model_dir, model_name)
     args.model_dir = model_dir
+    print(model_dir)
     best_model_dir = path.join(model_dir, 'best_models')
     args.best_model_dir = best_model_dir
     if not path.exists(model_dir):
@@ -132,11 +133,11 @@ def main():
 
     if args.dataset == 'litbank':
         args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
+        args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll/{args.cross_val_split}')
     else:
         args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
+        args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
 
-    args.conll_data_dir = path.join(
-        args.base_data_dir, "litbank_tenfold_splits/{}".format(args.cross_val_split))
     print(args.data_dir)
 
     # Get mention model name

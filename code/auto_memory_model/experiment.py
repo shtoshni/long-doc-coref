@@ -10,15 +10,14 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
 from utils import action_sequences_to_clusters, classify_errors
-from litbank_utils.utils import load_data
+from data_utils.utils import load_data
 from coref_utils.conll import evaluate_conll
-from coref_utils.utils import mention_to_cluster
+from coref_utils.utils import get_mention_to_cluster
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
 from auto_memory_model.controller.lfm_controller import LearnedFixedMemController
 from auto_memory_model.controller.lru_controller import LRUController
 from auto_memory_model.controller.um_controller import UnboundedMemController
-from pytorch_memlab import MemReporter
 
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -46,7 +45,7 @@ class Experiment:
             self.max_stuck_epochs = 10
         else:
             self.update_frequency = 100
-            self.max_stuck_epochs = 3
+            self.max_stuck_epochs = 10
 
         self.train_examples, self.dev_examples, self.test_examples \
             = load_data(data_dir, max_segment_len, dataset=self.dataset)
@@ -263,7 +262,7 @@ class Experiment:
         model.train()
         return batch_loss/len(self.dev_examples)
 
-    def eval_model(self, split='dev'):
+    def eval_model(self, split='dev', final_eval=False):
         """Eval model"""
         # Set the random seed to get consistent results
         model = self.model
@@ -298,13 +297,14 @@ class Experiment:
                     total_actions += len(action_list)
 
                     predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
-                    coref_predictions[example["doc_key"]] = predicted_clusters
-                    subtoken_maps[example["doc_key"]] = example["subtoken_map"]
 
                     predicted_clusters, mention_to_predicted =\
-                        mention_to_cluster(predicted_clusters, threshold=self.cluster_threshold)
+                        get_mention_to_cluster(predicted_clusters, threshold=self.cluster_threshold)
                     gold_clusters, mention_to_gold =\
-                        mention_to_cluster(example["clusters"], threshold=self.cluster_threshold)
+                        get_mention_to_cluster(example["clusters"], threshold=self.cluster_threshold)
+
+                    coref_predictions[example["doc_key"]] = predicted_clusters
+                    subtoken_maps[example["doc_key"]] = example["subtoken_map"]
 
                     # Update the number of clusters
                     num_gt_clusters += len(gold_clusters)
@@ -312,8 +312,7 @@ class Experiment:
 
                     oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
                     oracle_clusters, mention_to_oracle = \
-                        mention_to_cluster(oracle_clusters,
-                                           threshold=self.cluster_threshold)
+                        get_mention_to_cluster(oracle_clusters, threshold=self.cluster_threshold)
                     evaluator.update(predicted_clusters, gold_clusters,
                                      mention_to_predicted, mention_to_gold)
                     oracle_evaluator.update(oracle_clusters, gold_clusters,
@@ -339,12 +338,13 @@ class Experiment:
                 fscore = fscore * 100
                 logging.info("F-score: %.1f %s" % (fscore, perf_str))
 
-                if False:
-                    gold_path = path.join(self.conll_data_dir, split + ".conll")
+                if final_eval:
+                    gold_path = path.join(self.conll_data_dir, f'{split}.conll')
+                    prediction_file = path.join(self.model_dir, f'{split}.conll')
                     conll_results = evaluate_conll(
-                        self.conll_scorer, gold_path, coref_predictions, subtoken_maps)
+                        self.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
                     average_f1 = sum(results for results in conll_results.values()) / len(conll_results)
-                    logging.info("(CoNLL) F-score : %.3f, MUC: %.3f, Bcub: %.3f, CEAFE: %.3f"
+                    logging.info("(CoNLL) F-score : %.1f, MUC: %.1f, Bcub: %.1f, CEAFE: %.1f"
                                  % (average_f1, conll_results["muc"], conll_results['bcub'],
                                     conll_results['ceafe']))
 
@@ -373,7 +373,7 @@ class Experiment:
             for split in ['Train', 'Dev', 'Test']:
                 logging.info('\n')
                 logging.info('%s' % split)
-                split_f1 = self.eval_model(split.lower())
+                split_f1 = self.eval_model(split.lower(), final_eval=True)
                 logging.info('Calculated F1: %.3f' % split_f1)
 
                 f.write("%s\t%.4f\n" % (split, split_f1))

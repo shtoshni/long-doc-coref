@@ -1,7 +1,7 @@
 import torch
 from pytorch_utils.modules import MLP
 from auto_memory_model.memory.base_fixed_memory import BaseMemory
-from pytorch_memlab import MemReporter
+# from pytorch_memlab import MemReporter
 
 
 class UnboundedMemory(BaseMemory):
@@ -10,7 +10,7 @@ class UnboundedMemory(BaseMemory):
         self.train_span_model = train_span_model
 
         # verbose shows how storage is shared across multiple Tensors
-        self.reporter = MemReporter(self.mem_coref_mlp)
+        # self.reporter = MemReporter(self.mem_coref_mlp)
 
         if not self.train_span_model:
             self.not_a_mention = MLP(input_size=self.mem_size, hidden_size=self.mlp_size, output_size=1,
@@ -108,7 +108,7 @@ class UnboundedMemory(BaseMemory):
                 first_overwrite = False
                 # We start with a single empty memory cell
                 mem_vectors = torch.unsqueeze(query_vector, dim=0)
-                last_ment_vectors = torch.unsqueeze(query_vector, dim=0)
+                # last_ment_vectors = torch.unsqueeze(query_vector, dim=0)
                 ent_counter = torch.tensor([1.0]).cuda()
                 last_mention_idx[0] = ment_idx
             else:
@@ -124,20 +124,20 @@ class UnboundedMemory(BaseMemory):
                     if self.entity_rep == 'avg':
                         total_counts = torch.unsqueeze((ent_counter + 1).float(), dim=1)
                         pool_vec_num = (mem_vectors * torch.unsqueeze(ent_counter, dim=1)
-                                        + rep_query_vector)
+                                        + query_vector)
                         avg_pool_vec = pool_vec_num/total_counts
                         mem_vectors = mem_vectors * (1 - mask) + mask * avg_pool_vec
                         # mem_vectors[cell_idx, :] = mem_vectors[cell_idx, :] + query_vector
 
                     # Update last mention vector
-                    last_ment_vectors = last_ment_vectors * (1 - mask) + mask * rep_query_vector
+                    # last_ment_vectors = last_ment_vectors * (1 - mask) + mask * rep_query_vector
                     ent_counter = ent_counter + cell_mask
                     last_mention_idx[cell_idx] = ment_idx
                 elif action_str == 'o':
                     # Append the new vector
                     mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(query_vector, dim=0)], dim=0)
                     # Update last mention vector
-                    last_ment_vectors = torch.cat([last_ment_vectors, torch.unsqueeze(query_vector, dim=0)], dim=0)
+                    # last_ment_vectors = torch.cat([last_ment_vectors, torch.unsqueeze(query_vector, dim=0)], dim=0)
 
                     ent_counter = torch.cat([ent_counter, torch.tensor([1.0]).cuda()], dim=0)
                     last_mention_idx = torch.cat([last_mention_idx, torch.tensor([ment_idx]).cuda()], dim=0)

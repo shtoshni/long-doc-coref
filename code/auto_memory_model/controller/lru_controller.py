@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from auto_memory_model.memory.lru_memory import LRUMemory
 from auto_memory_model.controller.lfm_controller import LearnedFixedMemController
-from auto_memory_model.utils import get_mention_to_cluster, get_ordered_mentions
+from coref_utils.utils import get_mention_to_cluster, get_ordered_mentions
 import numpy as np
 
 

@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from auto_memory_model.memory.lfm_memory import LearnedFixedMemory
 from auto_memory_model.controller.base_controller import BaseController
-from auto_memory_model.utils import get_mention_to_cluster, get_ordered_mentions
+from coref_utils.utils import get_mention_to_cluster, get_ordered_mentions
 import numpy as np
 
 
@@ -63,7 +63,7 @@ class LearnedFixedMemController(BaseController):
                 else:
                     # Cluster is not being tracked
                     # Find the cell with the least regret that we can overwrite to
-                    # If the regret is non-positive i.e. we would be missing out on >= mentions
+                    # If the regret is non-positive i.e. we would be missing out on > mentions
                     # of a cluster being currently tracked than the new mention cluster then we
                     # don't perform overwrite.
                     cur_rem_mentions = cluster_to_rem_mentions[mention_cluster]
@@ -130,15 +130,11 @@ class LearnedFixedMemController(BaseController):
                     else:
                         action_indices.append(self.num_cells + 1)
 
-                # if action_indices[-1] >= 0:
-                #     weight += 1
-
         action_indices = torch.tensor(action_indices).cuda()
         return action_indices
 
     def action_to_coref_new_idx(self, action_tuple_list, rand_fl_list, follow_gt):
         action_indices = []
-        # weight = 0
 
         for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
             if action_str == 'c':
@@ -157,10 +153,7 @@ class LearnedFixedMemController(BaseController):
             else:
                 raise NotImplementedError
 
-            # if action_indices[-1] >= 0:
-            #     weight += 1
-
-        return torch.tensor(action_indices).cuda()  # , weight
+        return torch.tensor(action_indices).cuda()
 
     def forward(self, example, teacher_forcing=False):
         """

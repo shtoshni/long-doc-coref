@@ -138,6 +138,10 @@ class BaseMemory(nn.Module):
         # Coref Score
         pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector,
                               feature_embs], dim=-1)
+
+        del rep_query_vector
+        del mem_vectors
+
         if self.checkpoint:
             pair_score = torch.utils.checkpoint.checkpoint(
                 self.mem_coref_mlp, pair_vec,
@@ -150,12 +154,12 @@ class BaseMemory(nn.Module):
 
         coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
 
-        if self.use_last_mention:
-            last_ment_vec = torch.cat(
-                [last_ment_vectors, rep_query_vector,
-                 last_ment_vectors * rep_query_vector], dim=-1)
-            last_ment_score = torch.squeeze(self.ment_coref_mlp(last_ment_vec), dim=-1)
-            coref_score = coref_score + last_ment_score  # M
+        # if self.use_last_mention:
+        #     last_ment_vec = torch.cat(
+        #         [last_ment_vectors, rep_query_vector,
+        #          last_ment_vectors * rep_query_vector], dim=-1)
+        #     last_ment_score = torch.squeeze(self.ment_coref_mlp(last_ment_vec), dim=-1)
+        #     coref_score = coref_score + last_ment_score  # M
 
         coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0]).cuda()], dim=0)
         coref_new_scores = torch.cat(([coref_score, torch.tensor([0.0]).cuda()]), dim=0)

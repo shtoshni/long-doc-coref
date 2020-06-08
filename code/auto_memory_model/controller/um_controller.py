@@ -4,8 +4,7 @@ import numpy as np
 
 from auto_memory_model.memory.um_memory import UnboundedMemory
 from auto_memory_model.controller.base_controller import BaseController
-from auto_memory_model.utils import get_mention_to_cluster, get_ordered_mentions
-# from pytorch_memlab import MemReporter
+from coref_utils.utils import get_mention_to_cluster, get_ordered_mentions
 
 
 class UnboundedMemController(BaseController):

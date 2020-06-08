@@ -1,20 +1,3 @@
-def get_mention_to_cluster(clusters):
-    mention_to_cluster = {}
-    for cluster_idx, cluster in enumerate(clusters):
-        for mention in cluster:
-            mention_to_cluster[tuple(mention)] = cluster_idx
-    return mention_to_cluster
-
-
-def get_ordered_mentions(clusters):
-    """Order all the mentions in the doc w.r.t. span_start and in case of ties span_end."""
-    all_mentions = []
-    for cluster in clusters:
-        all_mentions.extend(cluster)
-
-    # Span start is the main criteria, and span end is used to break ties
-    all_mentions = sorted(all_mentions, key=lambda x: x[0] + 1e-5 * x[1])
-    return all_mentions
 
 
 def action_sequences_to_clusters(actions, mentions):
@@ -84,3 +67,5 @@ def classify_errors(pred_action_list, gt_action_list):
         #         decisions['WM'] += 1
 
     return decisions
+
+

@@ -20,6 +20,7 @@ class IndependentDocEncoder(BaseDocEncoder):
 
         with torch.no_grad():
             outputs = self.bert(document, attention_mask=attn_mask)  # C x L x E
+            # outputs = self.bert(document)
 
         # encoded_layers = outputs[2]
         # # encoded_repr = torch.cat(encoded_layers[self.start_layer_idx:self.end_layer_idx], dim=-1)

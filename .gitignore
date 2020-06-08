@@ -12,3 +12,4 @@ data/*
 *.txt
 plots/*
 slurm_scripts/*
+.ipynb_checkpoints/

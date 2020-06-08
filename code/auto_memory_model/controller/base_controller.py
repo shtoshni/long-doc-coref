@@ -1,12 +1,9 @@
 import torch
 import torch.nn as nn
 
-from pytorch_utils.utils import get_sequence_mask, get_span_mask
 from document_encoder.independent import IndependentDocEncoder
 from document_encoder.overlap import OverlapDocEncoder
-from auto_memory_model.utils import get_ordered_mentions
 from pytorch_utils.modules import MLP
-import numpy as np
 
 
 class BaseController(nn.Module):
@@ -95,6 +92,8 @@ class BaseController(nn.Module):
                           (doc_range <= torch.unsqueeze(ment_ends, dim=1)))  # [C x T]
 
             del doc_range
+            del ment_starts
+            del ment_ends
 
             word_attn = torch.squeeze(self.mention_attn(encoded_doc), dim=1)  # [T]
             mention_word_attn = nn.functional.softmax(
