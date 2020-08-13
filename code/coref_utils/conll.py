@@ -97,13 +97,20 @@ def official_conll_eval(conll_scorer, gold_path, predicted_path, metric, officia
     return {"r": recall, "p": precision, "f": f1}
 
 
-def evaluate_conll(conll_scorer, gold_path, predictions, subtoken_maps, prediction_path, official_stdout=False):
+def evaluate_conll(conll_scorer, gold_path, predictions, subtoken_maps, prediction_path,
+                   all_metrics=False, official_stdout=False):
     with open(prediction_path, 'w') as prediction_file:
         with open(gold_path, "r") as gold_file:
             output_conll(gold_file, prediction_file, predictions, subtoken_maps)
         # print("Predicted conll file: {}".format(prediction_file.name))
-    result = {
-        m: official_conll_eval(conll_scorer, gold_file.name, prediction_file.name,
-                               m, official_stdout)["f"]
-        for m in ("muc", "bcub", "ceafe")}
+    if not all_metrics:
+        result = {
+            m: official_conll_eval(conll_scorer, gold_file.name, prediction_file.name,
+                                   m, official_stdout)["f"]
+            for m in ("muc", "bcub", "ceafe")}
+    else:
+        result = {
+            m: official_conll_eval(conll_scorer, gold_file.name, prediction_file.name,
+                                   m, official_stdout)
+            for m in ("muc", "bcub", "ceafe")}
     return result
