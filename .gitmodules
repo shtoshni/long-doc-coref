@@ -1,3 +1,0 @@
-[submodule "error_analysis/berkeley-coreference-analyser"]
-	path = error_analysis/berkeley-coreference-analyser
-	url = https://github.com/jkkummerfeld/berkeley-coreference-analyser.git
