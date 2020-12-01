@@ -1,10 +1,7 @@
 import argparse
 import os
 from os import path
-import hashlib
 import logging
-
-from collections import OrderedDict
 import subprocess
 
 from mention_model.experiment import Experiment
@@ -20,14 +17,14 @@ def main():
 
     # Add arguments to parser
     parser.add_argument(
-        '-base_data_dir', default='/home/shtoshni/Research/litbank_coref/data',
+        '-base_data_dir', default='../data',
         help='Root directory of data', type=str)
     parser.add_argument(
         '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
     parser.add_argument('-base_model_dir',
-                        default='/home/shtoshni/Research/litbank_coref/models',
+                        default='../models',
                         help='Root folder storing model runs', type=str)
-    parser.add_argument('-model_size', default='base', type=str,
+    parser.add_argument('-model_size', default='large', type=str,
                         help='BERT model type')
     parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
@@ -91,19 +88,8 @@ def main():
     #     args.pretrained_model = path.join(
     #         args.pretrained_mention_model_dir, f'mention_ontonotes_{args.model_size}_{args.ment_emb}.pt')
     # Log directory for Tensorflow Summary
-    log_dir = path.join(model_dir, "logs")
-    if not path.exists(log_dir):
-        os.makedirs(log_dir)
 
-    # Slurm args
-    if not args.slurm_id:
-        p = subprocess.Popen(['tensorboard', '--logdir',  log_dir],
-                             stdout=subprocess.PIPE, stderr=None)
-    try:
-        Experiment(**vars(args))
-    finally:
-        if not args.slurm_id:
-            p.kill()
+    Experiment(**vars(args))
 
 
 if __name__ == "__main__":

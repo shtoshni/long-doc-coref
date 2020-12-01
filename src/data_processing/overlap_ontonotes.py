@@ -274,9 +274,9 @@ if __name__ == "__main__":
     input_dir = sys.argv[1]
     output_dir = sys.argv[2]
     if not os.path.isdir(output_dir):
-        os.mkdir(output_dir)
+        os.makedirs(output_dir)
     # for seg_len in [128, 256, 384, 512]:
-    for seg_len in [384, 512]:
+    for seg_len in [512]:
         labels = collections.defaultdict(set)
         stats = collections.defaultdict(int)
         minimize_split(seg_len, input_dir, output_dir, stats)

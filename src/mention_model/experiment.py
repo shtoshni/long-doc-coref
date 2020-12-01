@@ -9,7 +9,6 @@ from collections import defaultdict, OrderedDict
 import numpy as np
 import pytorch_utils.utils as utils
 from mention_model.controller import Controller
-from torch.utils.tensorboard import SummaryWriter
 from data_utils.utils import load_data
 
 EPS = 1e-8
@@ -41,10 +40,6 @@ class Experiment:
                               "valid": self.dev_examples,
                               "test": self.test_examples}
 
-        if not slurm_id:
-            # Initialize Summary Writer
-            self.writer = SummaryWriter(path.join(model_dir, "logs"),
-                                        max_queue=500)
         # Get model paths
         self.model_dir = model_dir
         self.data_dir = data_dir
@@ -103,8 +98,6 @@ class Experiment:
         epochs_done = self.train_info['epoch']
         optimizer = self.optimizer
         scheduler = self.optim_scheduler
-        if not self.slurm_id:
-            writer = self.writer
 
         for epoch in range(epochs_done, max_epochs):
             print("\n\nStart Epoch %d" % (epoch + 1))
@@ -118,10 +111,6 @@ class Experiment:
                     self.train_info['global_steps'] += 1
                     loss = model(train_example)
                     total_loss = loss['mention']
-                    if not self.slurm_id:
-                        writer.add_scalar(
-                            "Loss/Total", total_loss,
-                            self.train_info['global_steps'])
 
                     if torch.isnan(total_loss):
                         print("Loss is NaN")
@@ -150,10 +139,6 @@ class Experiment:
 
             scheduler.step(fscore)
 
-            if not self.slurm_id:
-                writer.add_scalar("Training/Threshold", threshold,
-                                  global_step=self.train_info['epoch'])
-
             # Update model if validation performance improves
             if fscore > self.train_info['val_perf']:
                 self.train_info['val_perf'] = fscore
@@ -170,8 +155,6 @@ class Experiment:
                          % (epoch + 1, elapsed_time, fscore))
 
             sys.stdout.flush()
-            if not self.slurm_id:
-                self.writer.flush()
 
     def eval_preds(self, pred_mention_probs, gold_mentions, threshold=0.5):
         pred_mentions = (pred_mention_probs >= threshold).float()
@@ -264,14 +247,9 @@ class Experiment:
                 logging.info('Calculated F1: %.3f' % split_f1)
 
                 f.write("%s\t%.4f\n" % (split, split_f1))
-                if not self.slurm_id:
-                    self.writer.add_scalar(
-                        "F-score/{}".format(split), split_f1)
             logging.info("Final performance summary at %s" % perf_file)
 
         sys.stdout.flush()
-        if not self.slurm_id:
-            self.writer.close()
 
     def load_model(self, location):
         checkpoint = torch.load(location)

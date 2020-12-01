@@ -355,7 +355,10 @@ class Experiment:
         sys.stdout.flush()
 
     def load_model(self, location, model_type='last'):
-        checkpoint = torch.load(location, map_location=torch.device(self.device))
+        if torch.cuda.is_available():
+            checkpoint = torch.load(location)
+        else:
+            checkpoint = torch.load(location, map_location=self.device)
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.train_info = checkpoint['train_info']
 
