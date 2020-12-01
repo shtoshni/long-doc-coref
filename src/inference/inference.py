@@ -13,9 +13,6 @@ class Inference:
         else:
             self.device = device
         checkpoint = torch.load(model_path, map_location=self.device)
-        # By setting the pretrained_bert_dir to None, we force the model to not rely on local finetuned spanbert
-        # model and rather download it from huggingface models (uploaded in my namespace)
-        checkpoint['model_args']['pretrained_bert_dir'] = None
         self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.model.eval()  # Eval mode
@@ -30,6 +27,10 @@ class Inference:
         _, pred_actions, pred_mentions, _ = self.model(tokenized_doc)
         idx_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
 
+        mentions = []
+        for (ment_start, ment_end) in pred_mentions:
+            mentions.append(subtoken_map[ment_start], subtoken_map[ment_end + 1])
+
         clusters = []
         for idx_cluster in idx_clusters:
             cur_cluster = []
@@ -39,5 +40,5 @@ class Inference:
 
             clusters.append(cur_cluster)
 
-        return tokenized_doc, clusters
+        return tokenized_doc, clusters, mentions, pred_actions
 

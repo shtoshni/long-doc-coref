@@ -2,7 +2,6 @@ import argparse
 import os
 from os import path
 import logging
-import subprocess
 
 from mention_model.experiment import Experiment
 from mention_model.utils import get_mention_model_name
@@ -32,7 +31,7 @@ def main():
                         help='SpanBERT model location')
     parser.add_argument('-max_segment_len', default=512, type=int,
                         help='Max segment length of BERT segments.')
-    parser.add_argument('-top_span_ratio', default=0.2, type=float,
+    parser.add_argument('-top_span_ratio', default=0.3, type=float,
                         help='Ratio of top spans proposed as mentions.')
 
     parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'max', 'endpoint'],

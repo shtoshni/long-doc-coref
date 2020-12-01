@@ -128,7 +128,7 @@ class Experiment:
 
                 if (idx + 1) % 50 == 0:
                     print("Steps %d, Max memory %.3f" % (idx + 1, (torch.cuda.max_memory_allocated() / (1024 ** 3))))
-                    torch.cuda.reset_max_memory_allocated()
+                    torch.cuda.reset_peak_memory_stats()
                     # print("Current memory %.3f" % (torch.cuda.memory_allocated() / (1024 ** 3)))
                     # print(torch.cuda.memory_summary())
 

@@ -9,12 +9,13 @@ class BaseDocEncoder(nn.Module):
         self.device = device
 
         self.max_training_segments = max_training_segments
-        # Summary Writer
-        if pretrained_bert_dir:
+
+        # Check if the pretrained bert directory argument has the spanbert models
+        if pretrained_bert_dir and path.exists(path.join(pretrained_bert_dir, "spanbert_{}".format(model_size))):
             self.bert = BertModel.from_pretrained(
                 path.join(pretrained_bert_dir, "spanbert_{}".format(model_size)), output_hidden_states=False)
         else:
-            # Use the huggingface uploaded version
+            # Use the model from huggingface
             self.bert = AutoModel.from_pretrained(f"shtoshni/spanbert_coreference_{model_size}")
 
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased', output_hidden_states=False)

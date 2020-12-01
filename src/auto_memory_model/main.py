@@ -25,9 +25,9 @@ def main():
         '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
-        default="../lrec2020-coref/reference-coreference-scorers/scorer.pl")
+        default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
 
-    parser.add_argument('-model_size', default='base', type=str,
+    parser.add_argument('-model_size', default='large', type=str,
                         help='BERT model type')
     parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
@@ -77,7 +77,7 @@ def main():
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
-                        default=5e-4, type=float)
+                        default=2e-4, type=float)
     parser.add_argument('-no_singletons', help="No singletons.",
                         default=False, action="store_true")
     parser.add_argument('-eval', help="Evaluate model",
