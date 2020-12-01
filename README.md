@@ -17,7 +17,7 @@ scipy==1.4.1
 ```
 These are the core requirements which can be separately installed or just do:
 ```
-pip install -r requirements
+pip install -r requirements.txt
 ```
 
 Clone a few Github Repos (including this!)
