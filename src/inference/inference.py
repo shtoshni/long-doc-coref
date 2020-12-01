@@ -29,7 +29,7 @@ class Inference:
 
         mentions = []
         for (ment_start, ment_end) in pred_mentions:
-            mentions.append(subtoken_map[ment_start], subtoken_map[ment_end + 1])
+            mentions.append((subtoken_map[ment_start], subtoken_map[ment_end + 1]))
 
         clusters = []
         for idx_cluster in idx_clusters:
@@ -40,5 +40,5 @@ class Inference:
 
             clusters.append(cur_cluster)
 
-        return tokenized_doc, clusters, mentions, pred_actions
+        return {"tokenized_doc": tokenized_doc, "clusters": clusters, "mentions": mentions, "actions": pred_actions}
 

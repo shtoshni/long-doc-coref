@@ -1,5 +1,9 @@
 # Long Document Coreference with Bounded Memory Neural Networks
-Code for the EMNLP 2020 paper [Learning to Ignore: Long Document Coreference with Bounded Memory Neural Networks](https://arxiv.org/pdf/2010.02807.pdf)
+Code for the EMNLP 2020 paper [Learning to Ignore: Long Document Coreference with Bounded Memory Neural Networks](https://arxiv.org/pdf/2010.02807.pdf).
+Pretrained models are released [here](https://drive.google.com/drive/folders/1UFhkrlBP-O2MeaxVygZcuP9RWuglOTmN?usp=sharing).
+
+[Colab Notebook](https://colab.research.google.com/drive/1aG37Fkgg4GILFvpGE7YALEf-TWJlZgTe?usp=sharing) to show how to perform inference with pretrained models. 
+
 
 ## Environment Setup
 
