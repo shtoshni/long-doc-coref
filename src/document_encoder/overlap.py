@@ -14,8 +14,8 @@ class OverlapDocEncoder(BaseDocEncoder):
         batch_excerpt: C x L where C is number of chunks padded upto max length of L
         text_length_list: list of length of chunks (length C)
         """
-        if self.training and self.max_training_segments is not None:
-            example = self.truncate_document(example)
+        # if self.training and self.max_training_segments is not None:
+        #     example = self.truncate_document(example)
         sentences = example["real_sentences"]
         start_indices = example["start_indices"]
         end_indices = example["end_indices"]
@@ -47,6 +47,7 @@ class OverlapDocEncoder(BaseDocEncoder):
         return encoded_output
 
     def truncate_document(self, example):
+        example["sentences"] = example["real_sentences"]
         num_sentences = len(example["real_sentences"])
 
         if num_sentences > self.max_training_segments:
@@ -91,6 +92,7 @@ class OverlapDocEncoder(BaseDocEncoder):
                     clusters.append(cluster)
 
             example["real_sentences"] = sentences
+            example["sentences"] = example["real_sentences"]
             example["clusters"] = clusters
             example["sentence_map"] = sentence_map
             example["start_indices"] = start_indices

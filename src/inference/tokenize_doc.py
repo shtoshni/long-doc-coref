@@ -28,7 +28,6 @@ class DocumentState(object):
         assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
         return {
             "sentences": self.segments,
-            "real_sentences": self.real_segments,
             "start_indices": self.start_indices,
             "end_indices": self.end_indices,
             'sentence_map': [0] * num_words,  # Assume no sentence boundaries are specified
@@ -40,62 +39,28 @@ def flatten(l):
   return [item for sublist in l for item in sublist]
 
 
-def split_into_segments(document_state, constraints1, constraints2):
+def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
     current = 0
-    prev_current = -1
-    start_idx = 0
-
+    previous_token = 0
     while current < len(document_state.subtokens):
-        if prev_current == current:
-            break
-        # print(current, len(document_state.subtokens))
-        end = min(current + MAX_SEGMENT_LEN - 1 - 2,
+        end = min(current + max_segment_len - 1 - 2,
                   len(document_state.subtokens) - 1)
         while end >= current and not constraints1[end]:
             end -= 1
         if end < current:
-            end = min(current + MAX_SEGMENT_LEN - 1 - 2,
+            end = min(current + max_segment_len - 1 - 2,
                       len(document_state.subtokens) - 1)
             while end >= current and not constraints2[end]:
                 end -= 1
             if end < current:
                 raise Exception("Can't find valid segment")
-
-        # print(end)
-        if (end + 1) == len(document_state.subtokens):
-            end_idx = end + 1
-        else:
-            last_seg_length = end - current + 1
-            # Move current to the middle of last window
-            ovlp_current = end - last_seg_length//2
-            while ovlp_current < end and not constraints1[ovlp_current]:
-                ovlp_current += 1
-            # Move to next sentence start token
-            ovlp_current += 1
-            if ovlp_current == (end + 1):
-                ovlp_current = end - last_seg_length//2
-                while ovlp_current < end and not constraints2[ovlp_current]:
-                    ovlp_current += 1
-                # Move to next word
-                ovlp_current += 1
-
-            extra_length = (end + 1 - ovlp_current)//2
-            end_idx = ovlp_current + extra_length
-
-        document_state.real_segments.append(document_state.subtokens[current:end + 1])
-        document_state.segments.append(document_state.subtokens[start_idx:end_idx])
-        subtoken_map = document_state.subtoken_map[start_idx: end_idx]
-        document_state.segment_subtoken_map.append(subtoken_map)
-
-        document_state.start_indices.append(start_idx - current)
-        document_state.end_indices.append(end_idx - current)
-        # print(start_idx, end_idx)
-        start_idx = end_idx
-
-        if (end + 1) == len(document_state.subtokens):
-            current = end + 1
-        else:
-            current = ovlp_current
+        document_state.segments.append(
+            ['[CLS]'] + document_state.subtokens[current:end + 1] + ['[SEP]'])
+        subtoken_map = document_state.subtoken_map[current: end + 1]
+        document_state.segment_subtoken_map.append(
+            [previous_token] + subtoken_map + [subtoken_map[-1]])
+        current = end + 1
+        previous_token = subtoken_map[-1]
 
 
 def get_tokenized_doc(doc, tokenizer):
@@ -125,7 +90,7 @@ def get_tokenized_doc(doc, tokenizer):
         document_state.subtoken_map.append(word_idx)
         document_state.sentence_end.append(False)  # No info on sentence end
 
-    split_into_segments(document_state, document_state.sentence_end, document_state.token_end)
+    split_into_segments(document_state, MAX_SEGMENT_LEN, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()
     return document
 
@@ -134,6 +99,10 @@ if __name__ == "__main__":
     from transformers import BertTokenizer
 
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-    doc = "My father’s eyes had closed upon the light of this world six months, when Ishmael opened on it."
-    print(get_tokenized_doc(doc, tokenizer))
+    doc = open("/share/data/speech/Data/kgimpel/ccarol.tok.txt").read()
+    document = get_tokenized_doc(doc, tokenizer)
+    import json
+    output_file = "/home/shtoshni/Research/long-doc-coref/notebooks/ccarol.json"
+    with open(output_file, 'w') as fp:
+        json.dump(document, fp)
 

@@ -4,3 +4,5 @@ from auto_memory_model.memory.um_memory import UnboundedMemory
 from auto_memory_model.memory.um_memory_no_ignore import UnboundedMemoryNoIgnore
 from auto_memory_model.memory.lfm_memory import LearnedFixedMemory
 from auto_memory_model.memory.lru_memory import LRUMemory
+from auto_memory_model.memory.streaming_um_memory import StreamingUnboundedMemory
+from auto_memory_model.memory.streaming_lru_memory import StreamingLRUMemory

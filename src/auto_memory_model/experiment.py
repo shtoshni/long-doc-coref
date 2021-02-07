@@ -5,6 +5,7 @@ import time
 import logging
 import torch
 import json
+from copy import deepcopy
 from collections import defaultdict, OrderedDict
 import numpy as np
 from transformers import get_linear_schedule_with_warmup
@@ -147,7 +148,7 @@ class Experiment:
                     optimizer.zero_grad()
 
                     # Send the copy of the example, as the document could be truncated during training
-                    loss = model(dict(example))[0]
+                    loss = model(example)[0]
                     total_loss = loss['total']
                     if total_loss is None:
                         return None
@@ -237,7 +238,7 @@ class Experiment:
                 coref_predictions, subtoken_maps = {}, {}
 
                 for example in data_iter:
-                    loss, action_list, pred_mentions, gt_actions = model(example)
+                    loss, action_list, pred_mentions, gt_actions = model(dict(example))
                     for pred_action, gt_action in zip(action_list, gt_actions):
                         pred_class_counter[pred_action[1]] += 1
                         gt_class_counter[gt_action[1]] += 1
@@ -315,7 +316,7 @@ class Experiment:
                                     conll_results['ceafe']["f"]))
 
                 logger.info("Action accuracy: %.3f, Oracle F-score: %.3f" %
-                            (corr_actions/total_actions, oracle_evaluator.get_prf()[2]))
+                            (corr_actions/(total_actions + 1e-10), oracle_evaluator.get_prf()[2]))
                 logger.info(log_file)
                 logger.handlers[0].flush()
 

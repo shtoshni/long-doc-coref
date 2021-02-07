@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-
+import random
+from copy import deepcopy
 from document_encoder.independent import IndependentDocEncoder
 from document_encoder.overlap import OverlapDocEncoder
 from pytorch_utils.modules import MLP
@@ -11,13 +12,15 @@ class BaseController(nn.Module):
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
                  emb_size=20, sample_invalid=1.0, label_smoothing_wt=0.0,
-                 dataset='litbank', device='cuda', **kwargs):
+                 dataset='litbank', device='cuda', max_training_segments=3,
+                 **kwargs):
         super(BaseController, self).__init__()
 
         self.device = device
         self.dataset = dataset
 
         self.max_span_width = max_span_width
+        self.max_training_segments = max_training_segments
         self.top_span_ratio = top_span_ratio
         self.sample_invalid = sample_invalid
         self.label_smoothing_wt = label_smoothing_wt
@@ -148,7 +151,41 @@ class BaseController(nn.Module):
 
         return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices]
 
-    def get_mention_embs_and_actions(self, example):
+    @staticmethod
+    def get_document_subset(example, sentence_offset, num_sentences):
+        sentences = example["sentences"]
+        word_offset = sum([len(sent) for sent in sentences[:sentence_offset]])
+        sentences = sentences[sentence_offset: sentence_offset + num_sentences]
+        num_words = sum([len(sent) for sent in sentences])
+        sentence_map = example["sentence_map"][word_offset: word_offset + num_words]
+
+        clusters = []
+        for orig_cluster in example["clusters"]:
+            cluster = []
+            for ment_start, ment_end in orig_cluster:
+                if ment_end >= word_offset and ment_start < word_offset + num_words:
+                    cluster.append((ment_start - word_offset, ment_end - word_offset))
+
+            if len(cluster):
+                clusters.append(cluster)
+
+        example["sentences"] = sentences
+        example["clusters"] = clusters
+        example["sentence_map"] = sentence_map
+
+        return example
+
+    def truncate_document(self, example):
+        if self.training and self.max_training_segments is not None:
+            num_sentences = len(example["sentences"])
+
+            if num_sentences > self.max_training_segments:
+                sentence_offset = random.randint(0, num_sentences - self.max_training_segments)
+                return self.get_document_subset(example, sentence_offset, self.max_training_segments)
+
+        return example
+
+    def get_mention_embs(self, example):
         encoded_doc = self.doc_encoder(example)
         pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
 
@@ -156,20 +193,31 @@ class BaseController(nn.Module):
         pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
         pred_scores = torch.unbind(torch.unsqueeze(pred_scores, dim=1))
 
-        if "clusters" in example:
-            gt_actions = self.get_actions(pred_mentions, example["clusters"])
-        else:
-            gt_actions = [(-1, 'i')] * len(pred_mentions)
-
         mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
 
         del encoded_doc
 
         mention_emb_list = torch.unbind(mention_embs, dim=0)
+        return pred_mentions, mention_emb_list, pred_scores
+
+    def get_gt_actions(self, example, pred_mentions, **kwargs):
+        if "clusters" in example:
+            return self.get_actions(pred_mentions, example["clusters"], **kwargs)
+        else:
+            return [(-1, 'i')] * len(pred_mentions)
+
+    def get_mention_embs_and_actions(self, example, **kwargs):
+        pred_mentions, mention_emb_list, pred_scores = self.get_mention_embs(example)
+        gt_actions = self.get_gt_actions(example, pred_mentions, **kwargs)
+
         return pred_mentions, gt_actions, mention_emb_list, pred_scores
 
-    def get_genre_embedding(self, examples):
-        genre = examples["doc_key"][:2]
+    def get_genre_embedding(self, example):
+        if "doc_key" in example:
+            genre = example["doc_key"][:2]
+        else:
+            # Assume newswire
+            genre = "nw"
         genre_idx = self.genre_to_idx[genre]
         return self.genre_embeddings(torch.tensor(genre_idx, device=self.device))
 

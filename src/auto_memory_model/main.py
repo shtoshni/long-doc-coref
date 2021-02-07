@@ -44,7 +44,8 @@ def main():
 
     # Memory variables
     parser.add_argument('-mem_type', default='learned',
-                        choices=['learned', 'lru', 'unbounded', 'unbounded_no_ignore'],
+                        choices=['learned', 'lru', 'unbounded', 'unbounded_no_ignore',
+                                 'streaming_unbounded', 'streaming_lru'],
                         help="Memory type.")
     parser.add_argument('-num_cells', default=20, type=int,
                         help="Number of memory cells.")

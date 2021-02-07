@@ -34,11 +34,7 @@ class IndependentDocEncoder(BaseDocEncoder):
         encoded_output = encoded_output
         return encoded_output
 
-    def tensorize_example(self, example):
-        if self.training and self.max_training_segments is not None:
-            example = self.truncate_document(example)
-        sentences = example["sentences"]
-
+    def tensorize_sentences(self, sentences):
         sent_len_list = [len(sent) for sent in sentences]
         max_sent_len = max(sent_len_list)
         padded_sent = [self.tokenizer.convert_tokens_to_ids(sent)
@@ -47,34 +43,9 @@ class IndependentDocEncoder(BaseDocEncoder):
         doc_tens = torch.tensor(padded_sent).to(self.device)
         return doc_tens, sent_len_list
 
-    def truncate_document(self, example):
+    def tensorize_example(self, example):
         sentences = example["sentences"]
-        num_sentences = len(example["sentences"])
-
-        if num_sentences > self.max_training_segments:
-            sentence_offset = random.randint(0, num_sentences - self.max_training_segments)
-            word_offset = sum([len(sent) for sent in sentences[:sentence_offset]])
-            sentences = sentences[sentence_offset: sentence_offset + self.max_training_segments]
-            num_words = sum([len(sent) for sent in sentences])
-            sentence_map = example["sentence_map"][word_offset: word_offset + num_words]
-
-            clusters = []
-            for orig_cluster in example["clusters"]:
-                cluster = []
-                for ment_start, ment_end in orig_cluster:
-                    if ment_end >= word_offset and ment_start < word_offset + num_words:
-                        cluster.append((ment_start - word_offset, ment_end - word_offset))
-
-                if len(cluster):
-                    clusters.append(cluster)
-
-            example["sentences"] = sentences
-            example["clusters"] = clusters
-            example["sentence_map"] = sentence_map
-
-            return example
-        else:
-            return example
+        return self.tensorize_sentences(sentences)
 
     def forward(self, example):
         return self.encode_doc(*self.tensorize_example(example))

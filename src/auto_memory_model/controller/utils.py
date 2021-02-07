@@ -8,6 +8,10 @@ def pick_controller(mem_type='unbounded', dataset='litbank', device='cuda', **kw
         model = LRUController(dataset=dataset, device=device, **kwargs).to(device)
     elif mem_type == 'unbounded':
         model = UnboundedMemController(dataset=dataset, device=device, **kwargs).to(device)
+    elif mem_type == 'streaming_unbounded':
+        model = StreamingUnboundedMemController(dataset=dataset, device=device, **kwargs).to(device)
+    elif mem_type == 'streaming_lru':
+        model = StreamingLRUController(dataset=dataset, device=device, **kwargs).to(device)
     elif mem_type == 'unbounded_no_ignore':
         # When singleton clusters are removed during metric calculation, we
         # can avoid the problem of predicting singletons and invalid mentions, and track everything.
