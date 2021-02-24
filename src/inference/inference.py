@@ -1,5 +1,5 @@
 import torch
-
+import json
 from transformers import BertTokenizer
 from auto_memory_model.utils import action_sequences_to_clusters
 from auto_memory_model.controller.utils import pick_controller
@@ -19,26 +19,44 @@ class Inference:
 
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
 
-    def perform_coreference(self, doc):
-        tokenized_doc = get_tokenized_doc(doc, self.tokenizer)
+    def perform_coreference(self, doc, doc_key="nw", num_sents=None):
+        if isinstance(doc, str):
+            tokenized_doc = get_tokenized_doc(doc, self.tokenizer)
+        elif isinstance(doc, dict):
+            tokenized_doc = doc
+        else:
+            raise ValueError
+
+        # Ontonotes model need document genre which is formatted as the first two characters of the doc key
+        tokenized_doc["doc_key"] = doc_key
+
+        # print(len(tokenized_doc["sentences"]))
+        output_doc_dict = {"sentences": tokenized_doc["sentences"], "subtoken_map": tokenized_doc["subtoken_map"]}
+        if num_sents is not None:
+            tokenized_doc["sentences"] = tokenized_doc["sentences"][:num_sents]
+            output_doc_dict["sentences"] = tokenized_doc["sentences"]
+            num_words = sum([len(sentence) for sentence in tokenized_doc["sentences"]])
+            output_doc_dict["subtoken_map"] = tokenized_doc["subtoken_map"][:num_words]
+
         doc_tokens = flatten(tokenized_doc["sentences"])
         subtoken_map = tokenized_doc["subtoken_map"]
 
-        _, pred_actions, pred_mentions, _ = self.model(tokenized_doc)
+        with torch.no_grad():
+            _, pred_actions, pred_mentions, _ = self.model(tokenized_doc)
+
         idx_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
 
         mentions = []
         for (ment_start, ment_end) in pred_mentions:
-            mentions.append((subtoken_map[ment_start], subtoken_map[ment_end + 1]))
+            mentions.append((subtoken_map[ment_start], subtoken_map[ment_end]))
 
         clusters = []
         for idx_cluster in idx_clusters:
             cur_cluster = []
             for (ment_start, ment_end) in idx_cluster:
-                cur_cluster.append(((subtoken_map[ment_start], subtoken_map[ment_end + 1]),
+                cur_cluster.append(((subtoken_map[ment_start], subtoken_map[ment_end]),
                                     self.tokenizer.convert_tokens_to_string(doc_tokens[ment_start: ment_end + 1])))
 
             clusters.append(cur_cluster)
 
-        return {"tokenized_doc": tokenized_doc, "clusters": clusters, "mentions": mentions, "actions": pred_actions}
-
+        return {"tokenized_doc": output_doc_dict, "clusters": clusters, "mentions": mentions, "actions": pred_actions}
