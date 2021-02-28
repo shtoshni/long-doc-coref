@@ -147,7 +147,8 @@ class Experiment:
                     optimizer.zero_grad()
 
                     # Send the copy of the example, as the document could be truncated during training
-                    loss = model(dict(example))[0]
+                    from copy import deepcopy
+                    loss = model(deepcopy(example))[0]
                     total_loss = loss['total']
                     if total_loss is None:
                         return None

@@ -124,7 +124,8 @@ class Experiment:
 
                     optimizer.step()
 
-                handle_example(cur_example)
+                from copy import deepcopy
+                handle_example(deepcopy(cur_example))
 
                 if (idx + 1) % 50 == 0:
                     print("Steps %d, Max memory %.3f" % (idx + 1, (torch.cuda.max_memory_allocated() / (1024 ** 3))))
