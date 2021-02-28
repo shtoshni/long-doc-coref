@@ -11,7 +11,7 @@ import collections
 
 from coref_utils import conll
 from os import path
-from transformers import BertTokenizer
+from transformers import BertTokenizerFast
 
 
 class DocumentState(object):
@@ -107,6 +107,7 @@ class DocumentState(object):
             "clusters": merged_clusters,
             'sentence_map': sentence_map,
             "subtoken_map": subtoken_map,
+            "orig_tokens": self.tokens,
         }
 
 
@@ -123,7 +124,7 @@ def flatten(l):
 
 def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
     current = 0
-    previous_token = 0
+    # previous_token = 0
     while current < len(document_state.subtokens):
         end = min(current + max_segment_len - 1 - 2,
                   len(document_state.subtokens) - 1)
@@ -136,29 +137,27 @@ def split_into_segments(document_state, max_segment_len, constraints1, constrain
                 end -= 1
             if end < current:
                 raise Exception("Can't find valid segment")
-        document_state.segments.append(
-            ['[CLS]'] + document_state.subtokens[current:end + 1] + ['[SEP]'])
+        document_state.segments.append(document_state.subtokens[current:end + 1])
         subtoken_map = document_state.subtoken_map[current: end + 1]
-        document_state.segment_subtoken_map.append(
-            [previous_token] + subtoken_map + [subtoken_map[-1]])
+        document_state.segment_subtoken_map.append(subtoken_map)
         info = document_state.info[current: end + 1]
-        document_state.segment_info.append([None] + info + [None])
+        document_state.segment_info.append(info)
         current = end + 1
-        previous_token = subtoken_map[-1]
+        # previous_token = subtoken_map[-1]
 
 
 def get_sentence_map(segments, sentence_end):
     current = 0
     sent_map = []
     sent_end_idx = 0
-    assert len(sentence_end) == sum([len(s) - 2 for s in segments])
+    assert len(sentence_end) == sum([len(s) for s in segments])
     for segment in segments:
-        sent_map.append(current)
-        for i in range(len(segment) - 2):
+        # sent_map.append(current)
+        for i in range(len(segment)):
             sent_map.append(current)
             current += int(sentence_end[sent_end_idx])
             sent_end_idx += 1
-        sent_map.append(current)
+        # sent_map.append(current)
     return sent_map
 
 
@@ -195,7 +194,7 @@ def get_document(document_lines, tokenizer, segment_len, stats):
 
 
 def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
-    input_path = path.join(input_dir, "{}.english.v4_gold_conll".format(split))
+    input_path = path.join(input_dir, "{}.conll".format(split))
     output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
     count = 0
     print("Minimizing {}".format(input_path))
@@ -223,7 +222,7 @@ def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
 
 def minimize_split(seg_len, input_dir, output_dir, stats):
     # do_lower_case = True if 'chinese' in vocab_file else False
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
 
     minimize_partition("dev", seg_len, input_dir, output_dir, tokenizer, stats)
     minimize_partition("train", seg_len, input_dir, output_dir, tokenizer, stats)

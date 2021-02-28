@@ -92,6 +92,7 @@ class UnboundedMemControllerNoIgnore(UnboundedMemController):
         mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
+        del encoded_doc
         metadata = {}
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(example)}

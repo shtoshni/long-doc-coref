@@ -11,7 +11,7 @@ import collections
 
 from coref_utils import conll
 from os import path
-from transformers import BertTokenizer
+from transformers import BertTokenizerFast
 
 
 class DocumentState(object):
@@ -236,7 +236,7 @@ def get_document(document_lines, tokenizer, segment_len, stats):
 
 
 def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
-    input_path = path.join(input_dir, "{}.english.v4_gold_conll".format(split))
+    input_path = path.join(input_dir, "{}.conll".format(split))
     output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
     count = 0
     print("Minimizing {}".format(input_path))
@@ -263,7 +263,7 @@ def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
 
 
 def minimize_split(seg_len, input_dir, output_dir, stats):
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
 
     minimize_partition("dev", seg_len, input_dir, output_dir, tokenizer, stats)
     minimize_partition("train", seg_len, input_dir, output_dir, tokenizer, stats)

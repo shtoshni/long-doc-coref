@@ -28,10 +28,11 @@ class IndependentDocEncoder(BaseDocEncoder):
         unpadded_encoded_output = []
         for i in range(num_chunks):
             unpadded_encoded_output.append(
-                encoded_repr[i, :text_length_list[i], :])
+                encoded_repr[i, 1:text_length_list[i]-1, :])
 
         encoded_output = torch.cat(unpadded_encoded_output, dim=0)
         encoded_output = encoded_output
+
         return encoded_output
 
     def tensorize_example(self, example):
@@ -39,6 +40,7 @@ class IndependentDocEncoder(BaseDocEncoder):
             example = self.truncate_document(example)
         sentences = example["sentences"]
 
+        sentences = [(['[CLS]'] + sent + ['[SEP]']) for sent in sentences]
         sent_len_list = [len(sent) for sent in sentences]
         max_sent_len = max(sent_len_list)
         padded_sent = [self.tokenizer.convert_tokens_to_ids(sent)

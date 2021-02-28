@@ -1,6 +1,6 @@
 import torch
 import json
-from transformers import BertTokenizer
+from transformers import BertTokenizer, BertTokenizerFast
 from auto_memory_model.utils import action_sequences_to_clusters
 from auto_memory_model.controller.utils import pick_controller
 from inference.tokenize_doc import get_tokenized_doc, flatten
@@ -17,7 +17,7 @@ class Inference:
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.model.eval()  # Eval mode
 
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+        self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
 
     def perform_coreference(self, doc, doc_key="nw", num_sents=None):
         if isinstance(doc, str):

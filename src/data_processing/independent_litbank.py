@@ -127,7 +127,6 @@ def flatten(l):
 
 def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
     current = 0
-    previous_token = 0
     while current < len(document_state.subtokens):
         end = min(current + max_segment_len - 1 - 2,
                   len(document_state.subtokens) - 1)
@@ -141,28 +140,24 @@ def split_into_segments(document_state, max_segment_len, constraints1, constrain
             if end < current:
                 raise Exception("Can't find valid segment")
         document_state.segments.append(
-            ['[CLS]'] + document_state.subtokens[current:end + 1] + ['[SEP]'])
+            document_state.subtokens[current:end + 1])
         subtoken_map = document_state.subtoken_map[current: end + 1]
-        document_state.segment_subtoken_map.append(
-            [previous_token] + subtoken_map + [subtoken_map[-1]])
+        document_state.segment_subtoken_map.append(subtoken_map)
         info = document_state.info[current: end + 1]
-        document_state.segment_info.append([None] + info + [None])
+        document_state.segment_info.append(info)
         current = end + 1
-        previous_token = subtoken_map[-1]
 
 
 def get_sentence_map(segments, sentence_end):
     current = 0
     sent_map = []
     sent_end_idx = 0
-    assert len(sentence_end) == sum([len(s) - 2 for s in segments])
+    assert len(sentence_end) == sum([len(s) for s in segments])
     for segment in segments:
-        sent_map.append(current)
-        for i in range(len(segment) - 2):
+        for i in range(len(segment)):
             sent_map.append(current)
             current += int(sentence_end[sent_end_idx])
             sent_end_idx += 1
-        sent_map.append(current)
     return sent_map
 
 

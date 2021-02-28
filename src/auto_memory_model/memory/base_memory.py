@@ -144,10 +144,8 @@ class BaseMemory(nn.Module):
             avg_pool_vec = alpha_wt * mem_vectors[cell_idx, :] + (1 - alpha_wt) * query_vector
             mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(avg_pool_vec, dim=0)
         else:
-            total_counts = torch.unsqueeze((ent_counter + 1).float(), dim=1)
-            pool_vec_num = mem_vectors * torch.unsqueeze(ent_counter, dim=1) + query_vector
-            avg_pool_vec = pool_vec_num / total_counts
-            mem_vectors = mem_vectors * (1 - mask) + mask * avg_pool_vec
+            avg_vec = (mem_vectors[cell_idx] * ent_counter[cell_idx] + query_vector)/(ent_counter[cell_idx] + 1)
+            mem_vectors = mem_vectors * (1 - mask) + mask * avg_vec
 
         return mem_vectors
 
