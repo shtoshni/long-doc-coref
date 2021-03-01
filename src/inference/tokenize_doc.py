@@ -2,6 +2,7 @@
 
 
 import re
+from data_processing.overlap_ontonotes import normalize_word
 
 BERT_RE = re.compile(r'## *')
 MAX_SEGMENT_LEN = 512
@@ -100,30 +101,41 @@ def split_into_segments(document_state, constraints1, constraints2):
 
 def get_tokenized_doc(doc, tokenizer):
     document_state = DocumentState()
-    tokenized_doc = tokenizer.tokenize(doc)
+    if isinstance(doc, list):
+        for word_idx, word in enumerate(doc):
+            word = normalize_word(word)
+            subtokens = tokenizer.tokenize(word)
+            document_state.tokens.append(word)
+            document_state.token_end += ([False]
+                                         * (len(subtokens) - 1)) + [True]
+            for sidx, subtoken in enumerate(subtokens):
+                document_state.subtokens.append(subtoken)
+                document_state.sentence_end.append(False)
+                document_state.subtoken_map.append(word_idx)
+    else:
+        tokenized_doc = tokenizer.tokenize(doc)
+        word_idx = -1
+        for idx, token in enumerate(tokenized_doc):
+            if not BERT_RE.match(token):
+                word_idx += 1
 
-    word_idx = -1
-    for idx, token in enumerate(tokenized_doc):
-        if not BERT_RE.match(token):
-            word_idx += 1
-
-        document_state.tokens.append(token)
-        # Subtoken and token are same
-        document_state.subtokens.append(token)
-        if idx == len(tokenized_doc) - 1:
-            # End of document
-            document_state.token_end += ([True])
-        else:
-            next_token = tokenized_doc[idx + 1]
-            if BERT_RE.match(next_token):
-                # If the next token has ## at the start then the current subtoken
-                # is clearly not the end of the token
-                document_state.token_end += ([False])
-            else:
+            document_state.tokens.append(token)
+            # Subtoken and token are same
+            document_state.subtokens.append(token)
+            if idx == len(tokenized_doc) - 1:
+                # End of document
                 document_state.token_end += ([True])
+            else:
+                next_token = tokenized_doc[idx + 1]
+                if BERT_RE.match(next_token):
+                    # If the next token has ## at the start then the current subtoken
+                    # is clearly not the end of the token
+                    document_state.token_end += ([False])
+                else:
+                    document_state.token_end += ([True])
 
-        document_state.subtoken_map.append(word_idx)
-        document_state.sentence_end.append(False)  # No info on sentence end
+            document_state.subtoken_map.append(word_idx)
+            document_state.sentence_end.append(False)  # No info on sentence end
 
     split_into_segments(document_state, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()
@@ -131,9 +143,9 @@ def get_tokenized_doc(doc, tokenizer):
 
 
 if __name__ == "__main__":
-    from transformers import BertTokenizer
+    from transformers import BertTokenizerFast
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
     doc = "My father’s eyes had closed upon the light of this world six months, when Ishmael opened on it."
     print(get_tokenized_doc(doc, tokenizer))
 

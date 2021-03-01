@@ -14,13 +14,14 @@ class Inference:
             self.device = device
         checkpoint = torch.load(model_path, map_location=self.device)
         self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
+        print(checkpoint['model_args'])
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.model.eval()  # Eval mode
 
         self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
 
     def perform_coreference(self, doc, doc_key="nw", num_sents=None):
-        if isinstance(doc, str):
+        if isinstance(doc, str) or isinstance(doc, list):
             tokenized_doc = get_tokenized_doc(doc, self.tokenizer)
         elif isinstance(doc, dict):
             tokenized_doc = doc
@@ -59,4 +60,5 @@ class Inference:
 
             clusters.append(cur_cluster)
 
-        return {"tokenized_doc": output_doc_dict, "clusters": clusters, "mentions": mentions, "actions": pred_actions}
+        return {"tokenized_doc": output_doc_dict, "clusters": clusters,
+                "subtoken_idx_clusters": idx_clusters, "actions": pred_actions}
