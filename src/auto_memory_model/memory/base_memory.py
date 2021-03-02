@@ -119,7 +119,7 @@ class BaseMemory(nn.Module):
         feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
         return feature_embs
 
-    def get_coref_new_scores(self, query_vector, ment_score, mem_vectors,
+    def get_coref_new_scores(self, query_vector, mem_vectors,
                              ent_counter, feature_embs):
         # Repeat the query vector for comparison against all cells
         num_cells = mem_vectors.shape[0]
@@ -128,7 +128,7 @@ class BaseMemory(nn.Module):
         # Coref Score
         pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector, feature_embs], dim=-1)
         pair_score = self.mem_coref_mlp(pair_vec)
-        coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
+        coref_score = torch.squeeze(pair_score, dim=-1)  # M
 
         coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0]).to(self.device)], dim=0)
         # Append dummy score of 0.0 for new entity

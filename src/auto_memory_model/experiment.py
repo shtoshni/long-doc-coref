@@ -27,7 +27,8 @@ class Experiment:
                  pretrained_mention_model=None,
                  # Model params
                  seed=0, init_lr=2e-4, max_gradient_norm=10.0,
-                 max_epochs=20, max_segment_len=512, eval=False, num_train_docs=None,
+                 max_epochs=20, max_segment_len=512, eval=False,
+                 num_train_docs=None, num_eval_docs=None,
                  mem_type="unbounded", train_with_singletons=False,
                  # Other params
                  slurm_id=None, conll_data_dir=None, conll_scorer=None, **kwargs):
@@ -64,6 +65,9 @@ class Experiment:
             = load_data(data_dir, max_segment_len, dataset=self.dataset)
         if num_train_docs is not None:
             self.train_examples = self.train_examples[:num_train_docs]
+        if num_eval_docs is not None:
+            self.dev_examples = self.dev_examples[:num_eval_docs]
+            self.test_examples = self.test_examples[:num_eval_docs]
 
         self.data_iter_map = {"train": self.train_examples,
                               "dev": self.dev_examples,

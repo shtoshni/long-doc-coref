@@ -19,7 +19,7 @@ class LearnedFixedMemController(BaseController):
         self.new_ent_wt = new_ent_wt
         self.over_loss_wt = over_loss_wt
         # Set loss functions
-        self.loss_fn = {'over': nn.CrossEntropyLoss(reduction='none', ignore_index=-100)}
+        self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=-100)
         self.coref_loss_wts = torch.tensor([1.0] * self.num_cells + [self.new_ent_wt]).to(self.device)
 
     def get_actions(self, pred_mentions, gt_clusters):
@@ -110,16 +110,11 @@ class LearnedFixedMemController(BaseController):
                 elif action_str == 'n':
                     # No space
                     action_indices.append(self.num_cells)
-                elif action_str == 'i':
-                    if follow_gt and rand_fl_list[idx] > self.sample_invalid:
-                        pass
-                    else:
-                        action_indices.append(self.num_cells + 1)
 
         action_indices = torch.tensor(action_indices).to(self.device)
         return action_indices
 
-    def action_to_coref_new_idx(self, action_tuple_list, rand_fl_list, follow_gt):
+    def action_to_coref_new_idx(self, action_tuple_list):
         action_indices = []
 
         for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
@@ -130,14 +125,6 @@ class LearnedFixedMemController(BaseController):
             elif action_str == 'n':
                 # No space
                 action_indices.append(self.num_cells)
-            elif action_str == 'i':
-                # Invalid mention
-                if follow_gt and rand_fl_list[idx] > self.sample_invalid:
-                    pass
-                else:
-                    action_indices.append(self.num_cells)
-            else:
-                raise NotImplementedError
 
         return torch.tensor(action_indices).to(self.device)
 
@@ -152,7 +139,7 @@ class LearnedFixedMemController(BaseController):
         rand_fl_list = np.random.random(len(mention_emb_list))
         follow_gt = self.training or teacher_forcing
 
-        coref_new_list, new_ignore_list, action_list = self.memory_net(
+        entity_or_not_list, coref_new_list, new_ignore_list, action_list = self.memory_net(
             mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
             teacher_forcing=teacher_forcing)
 
@@ -165,21 +152,28 @@ class LearnedFixedMemController(BaseController):
 
         loss = {'total': None}
         if follow_gt:
-            if len(coref_new_list) > 0:
-                loss = {}
-                action_prob_tens = torch.stack(coref_new_list, dim=0).to(self.device)  # M x (cells + 1)
-                action_indices = self.action_to_coref_new_idx(gt_actions, rand_fl_list, follow_gt)
+            if len(entity_or_not_list) > 0:
+                entity_invalid_tens = torch.stack(entity_or_not_list, dim=0).to(self.device)
+                entity_or_not_indices = self.entity_or_not_entity_gt(
+                    gt_actions, rand_fl_list, follow_gt)
+                entity_loss = torch.sum(self.loss_fn(entity_invalid_tens, entity_or_not_indices))
+                loss['entity'] = entity_loss
+                loss['total'] = loss['entity']
+                if len(coref_new_list) > 0:
+                    action_prob_tens = torch.stack(coref_new_list, dim=0).to(self.device)  # M x (cells + 1)
+                    action_indices = self.action_to_coref_new_idx(gt_actions)
 
-                coref_loss = torch.sum(
-                    label_smoothing_fn(action_prob_tens, action_indices.unsqueeze(dim=1), weight=self.coref_loss_wts))
-                loss['coref'] = coref_loss
+                    coref_loss = torch.sum(
+                        label_smoothing_fn(action_prob_tens, action_indices.unsqueeze(dim=1), weight=self.coref_loss_wts))
+                    loss['coref'] = coref_loss
 
-                # Calculate overwrite loss
-                new_ignore_tens = torch.stack(new_ignore_list, dim=0).to(self.device)
-                new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions, rand_fl_list, follow_gt)
-                over_loss = torch.sum(self.loss_fn['over'](new_ignore_tens, new_ignore_indices))
-                loss['over'] = over_loss
-                loss['total'] = loss['coref'] + loss['over']
+                    # Calculate overwrite loss
+                    new_ignore_tens = torch.stack(new_ignore_list, dim=0).to(self.device)
+                    new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions, rand_fl_list, follow_gt)
+                    over_loss = torch.sum(self.loss_fn(new_ignore_tens, new_ignore_indices))
+                    loss['over'] = over_loss
+
+                    loss['total'] += loss['coref'] + loss['over']
             return loss, action_list, pred_mentions, gt_actions
         else:
             return 0.0, action_list, pred_mentions, gt_actions

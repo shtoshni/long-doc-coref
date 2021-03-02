@@ -19,7 +19,7 @@ class UnboundedMemController(BaseController):
             drop_module=self.drop_module, **kwargs)
 
         # Set loss functions
-        self.loss_fn = {'over': nn.CrossEntropyLoss(reduction='none', ignore_index=-100)}
+        self.loss_fn = {'entity': nn.CrossEntropyLoss(reduction='none')}
         # Overwrite in Unbounded has only 2 classes - Overwrite and Invalid
 
     @staticmethod
@@ -51,7 +51,7 @@ class UnboundedMemController(BaseController):
 
         return actions
 
-    def calculate_coref_loss(self, action_prob_list, action_tuple_list, rand_fl_list, follow_gt):
+    def calculate_coref_loss(self, action_prob_list, action_tuple_list):
         num_cells = 0
         coref_loss = 0.0
         target_list = []
@@ -65,12 +65,8 @@ class UnboundedMemController(BaseController):
                 # Overwrite
                 gt_idx = (1 if num_cells == 0 else num_cells)
                 num_cells += 1
-            elif action_str == 'i':
-                # Invalid
-                if follow_gt and rand_fl_list[idx] > self.sample_invalid:
-                    continue
-                else:
-                    gt_idx = (1 if num_cells == 0 else num_cells)
+            else:
+                continue
 
             target = torch.tensor([gt_idx]).to(self.device)
             target_list.append(target)
@@ -87,24 +83,6 @@ class UnboundedMemController(BaseController):
 
         return coref_loss
 
-    def over_inv_tuple_to_idx(self, action_tuple_list, rand_fl_list, follow_gt):
-        action_indices = []
-
-        for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
-            if action_str == 'c':
-                action_indices.append(-100)
-            elif action_str == 'o':
-                action_indices.append(0)
-            elif action_str == 'i':
-                # Not a mention
-                if follow_gt and rand_fl_list[idx] > self.sample_invalid:
-                    pass
-                else:
-                    action_indices.append(1)
-
-        action_indices = torch.tensor(action_indices).to(self.device)
-        return action_indices
-
     def forward(self, example, teacher_forcing=False):
         """
         Encode a batch of excerpts.
@@ -120,26 +98,26 @@ class UnboundedMemController(BaseController):
         if teacher_forcing:
             rand_fl_list = np.zeros_like(rand_fl_list)
 
-        action_prob_list, action_list = self.memory_net(
+        entity_or_not_list, coref_new_list, action_list = self.memory_net(
             mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
             teacher_forcing=teacher_forcing)
 
         coref_loss = 0.0
         loss = {'total': None}
         if follow_gt:
-            if len(action_prob_list) > 0:
-                coref_new_prob_list, new_invalid_list = zip(*action_prob_list)
-                coref_loss = self.calculate_coref_loss(
-                    coref_new_prob_list, gt_actions, rand_fl_list, follow_gt)
+            if len(entity_or_not_list) > 0:
+                coref_loss = 0.0
+                if len(coref_new_list):
+                    coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
                 loss['coref'] = coref_loss
 
                 # Calculate overwrite loss
-                new_invalid_tens = torch.stack(new_invalid_list, dim=0).to(self.device)
-                over_action_indices = self.over_inv_tuple_to_idx(
+                entity_invalid_tens = torch.stack(entity_or_not_list, dim=0).to(self.device)
+                entity_or_not_indices = self.entity_or_not_entity_gt(
                     gt_actions, rand_fl_list, follow_gt)
-                over_loss = torch.sum(self.loss_fn['over'](new_invalid_tens, over_action_indices))
-                loss['over'] = over_loss
-                loss['total'] = loss['coref'] + loss['over']
+                entity_loss = torch.sum(self.loss_fn['entity'](entity_invalid_tens, entity_or_not_indices))
+                loss['entity'] = entity_loss
+                loss['total'] = loss['coref'] + loss['entity']
 
             return loss, action_list, pred_mentions, gt_actions
         else:

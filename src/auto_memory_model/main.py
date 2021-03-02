@@ -64,6 +64,8 @@ def main():
                         default=1.0, type=float)
     parser.add_argument('-num_train_docs', default=None, type=int,
                         help='Number of training docs.')
+    parser.add_argument('-num_eval_docs', default=None, type=int,
+                        help='Number of evaluation docs.')
     parser.add_argument('-max_training_segments', default=None, type=int,
                         help='Maximum number of BERT segments in a document.')
     parser.add_argument('-sample_invalid', help='Sample prob. of invalid mentions during training',

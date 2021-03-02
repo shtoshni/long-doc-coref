@@ -13,18 +13,8 @@ class UnboundedMemory(BaseMemory):
         last_mention_idx = torch.zeros(1).long().to(self.device)
         return mem, ent_counter, last_mention_idx
 
-    def predict_action(self, query_vector, ment_score, mem_vectors,
-                       ent_counter, feature_embs):
-        coref_new_scores = self.get_coref_new_scores(
-            query_vector, ment_score, mem_vectors, ent_counter, feature_embs)
-
-        # Negate the mention score
-        not_a_ment_score = -ment_score
-
-        over_ign_score = torch.cat([torch.tensor([0.0]).to(self.device), not_a_ment_score], dim=0).to(self.device)
-        return coref_new_scores, over_ign_score
-
-    def interpret_scores(self, coref_new_scores, overwrite_ign_scores, first_overwrite):
+    @staticmethod
+    def assign_cluster(coref_new_scores, first_overwrite):
         if first_overwrite:
             num_ents = 0
             num_cells = 1
@@ -36,23 +26,17 @@ class UnboundedMemory(BaseMemory):
         if pred_max_idx < num_cells:
             # Coref
             return pred_max_idx, 'c'
-        elif pred_max_idx == num_cells:
-            # Overwrite/Invalid mention
-            over_max_idx = torch.argmax(overwrite_ign_scores).item()
-            if over_max_idx == 0:
-                return num_ents, 'o'
-            else:
-                # Invalid mention
-                return -1, 'i'
         else:
-            raise NotImplementedError
+            # New cluster
+            return num_ents, 'o'
 
     def forward(self, mention_emb_list, mention_scores, gt_actions, metadata, rand_fl_list,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
 
-        action_logit_list = []
+        coref_new_list = []
+        entity_or_not_list = []
         action_list = []  # argmax actions
         first_overwrite = True
         last_action_str = '<s>'
@@ -71,13 +55,22 @@ class UnboundedMemory(BaseMemory):
                 # (b) Training and the mention is not an invalid or
                 # (c) Training and mention is an invalid mention and randomly sampled float is less than invalid
                 # sampling probability
-                coref_new_scores, overwrite_ign_scores = self.predict_action(
-                    query_vector, ment_score, mem_vectors,
-                    ent_counter, feature_embs)
 
-                pred_cell_idx, pred_action_str = self.interpret_scores(
-                    coref_new_scores, overwrite_ign_scores, first_overwrite)
-                action_logit_list.append((coref_new_scores, overwrite_ign_scores))
+                overwrite_ign_scores = torch.cat([torch.tensor([0.0]).to(self.device), -ment_score], dim=0)
+                entity_or_not_list.append(overwrite_ign_scores)
+                pred_action_str = None
+                if ment_score < 0:
+                    pred_action_str = 'i'
+
+                if (follow_gt and gt_action_str == 'i') or ((not follow_gt) and pred_action_str == 'i'):
+                    action_list.append((-1, 'i'))
+                    continue
+
+                coref_new_scores = self.get_coref_new_scores(
+                    query_vector, mem_vectors, ent_counter, feature_embs)
+
+                pred_cell_idx, pred_action_str = self.assign_cluster(coref_new_scores, first_overwrite)
+                coref_new_list.append(coref_new_scores)
                 action_list.append((pred_cell_idx, pred_action_str))
             else:
                 continue
@@ -119,4 +112,4 @@ class UnboundedMemory(BaseMemory):
                     ent_counter = torch.cat([ent_counter, torch.tensor([1.0]).to(self.device)], dim=0)
                     last_mention_idx = torch.cat([last_mention_idx, torch.tensor([ment_idx]).to(self.device)], dim=0)
 
-        return action_logit_list, action_list
+        return entity_or_not_list, coref_new_list, action_list

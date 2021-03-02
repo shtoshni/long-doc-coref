@@ -83,7 +83,7 @@ class UnboundedMemControllerNoIgnore(UnboundedMemController):
         Encode a batch of excerpts.
         """
         encoded_doc = self.doc_encoder(example)
-        pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
+        pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc, topk=True)
 
         # Sort the predicted mentions
         pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))

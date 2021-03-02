@@ -123,7 +123,7 @@ class BaseController(nn.Module):
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         return filt_cand_starts, filt_cand_ends
 
-    def get_pred_mentions(self, example, encoded_doc):
+    def get_pred_mentions(self, example, encoded_doc, topk=False):
         num_words = encoded_doc.shape[0]
 
         filt_cand_starts, filt_cand_ends = self.get_candidate_endpoints(encoded_doc, example)
@@ -136,7 +136,16 @@ class BaseController(nn.Module):
         mention_logits += self.get_mention_width_scores(filt_cand_starts, filt_cand_ends)
 
         k = int(self.top_span_ratio * num_words)
-        topk_indices = torch.topk(mention_logits, k)[1]
+
+        if self.training:
+            topk_indices = torch.topk(mention_logits, k)[1]
+        else:
+            if topk:
+                topk_indices = torch.topk(mention_logits, k)[1]
+            else:
+                topk_indices = torch.squeeze((mention_logits >= 0.0).nonzero(as_tuple=False), dim=1)
+                if k > topk_indices.shape[0]:
+                    topk_indices = torch.topk(mention_logits, k)[1]
 
         topk_starts = filt_cand_starts[topk_indices]
         topk_ends = filt_cand_ends[topk_indices]
@@ -167,6 +176,22 @@ class BaseController(nn.Module):
 
         mention_emb_list = torch.unbind(mention_embs, dim=0)
         return pred_mentions, gt_actions, mention_emb_list, pred_scores
+
+    def entity_or_not_entity_gt(self, action_tuple_list, rand_fl_list, follow_gt):
+        action_indices = []
+
+        for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
+            if action_str == 'c' or action_str == 'o':
+                action_indices.append(0)
+            elif action_str == 'i':
+                # Not a mention
+                if follow_gt and rand_fl_list[idx] > self.sample_invalid:
+                    pass
+                else:
+                    action_indices.append(1)
+
+        action_indices = torch.tensor(action_indices).to(self.device)
+        return action_indices
 
     def get_genre_embedding(self, examples):
         genre = examples["doc_key"][:2]
