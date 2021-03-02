@@ -19,12 +19,8 @@ class LearnedFixedMemController(BaseController):
         self.new_ent_wt = new_ent_wt
         self.over_loss_wt = over_loss_wt
         # Set loss functions
-        self.loss_fn = {}
-
+        self.loss_fn = {'over': nn.CrossEntropyLoss(reduction='none', ignore_index=-100)}
         self.coref_loss_wts = torch.tensor([1.0] * self.num_cells + [self.new_ent_wt]).to(self.device)
-
-        self.over_loss_wts = torch.tensor([1.0] * (self.num_cells + 2)).to(self.device)
-        self.loss_fn['over'] = nn.CrossEntropyLoss(weight=self.over_loss_wts, reduction='sum')
 
     def get_actions(self, pred_mentions, gt_clusters):
         # Useful data structures
@@ -181,10 +177,9 @@ class LearnedFixedMemController(BaseController):
                 # Calculate overwrite loss
                 new_ignore_tens = torch.stack(new_ignore_list, dim=0).to(self.device)
                 new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions, rand_fl_list, follow_gt)
-                over_loss = self.loss_fn['over'](new_ignore_tens, new_ignore_indices)
-
+                over_loss = torch.sum(self.loss_fn['over'](new_ignore_tens, new_ignore_indices))
                 loss['over'] = over_loss
-                loss['total'] = (loss['coref'] + self.over_loss_wt * loss['over'])
+                loss['total'] = loss['coref'] + loss['over']
             return loss, action_list, pred_mentions, gt_actions
         else:
             return 0.0, action_list, pred_mentions, gt_actions

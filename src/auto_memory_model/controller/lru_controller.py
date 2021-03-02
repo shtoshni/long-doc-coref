@@ -17,7 +17,7 @@ class LRUController(LearnedFixedMemController):
         # Set loss functions
         # Overwrite in LRU has only 2 classes - Overwrite, Ignore, Invalid
         self.over_loss_wts = torch.tensor([1.0] * 3).to(self.device)
-        self.loss_fn['over'] = nn.CrossEntropyLoss(weight=self.over_loss_wts, reduction='mean')
+        self.loss_fn = {'over': nn.CrossEntropyLoss(reduction='none', ignore_index=-100)}
 
     def get_actions(self, pred_mentions, gt_clusters):
         pred_mentions = [tuple(mention) for mention in pred_mentions]

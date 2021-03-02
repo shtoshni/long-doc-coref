@@ -19,7 +19,7 @@ class UnboundedMemController(BaseController):
             drop_module=self.drop_module, **kwargs)
 
         # Set loss functions
-        self.loss_fn = {'over': nn.CrossEntropyLoss(reduction='sum', ignore_index=-100)}
+        self.loss_fn = {'over': nn.CrossEntropyLoss(reduction='none', ignore_index=-100)}
         # Overwrite in Unbounded has only 2 classes - Overwrite and Invalid
 
     @staticmethod
@@ -137,10 +137,9 @@ class UnboundedMemController(BaseController):
                 new_invalid_tens = torch.stack(new_invalid_list, dim=0).to(self.device)
                 over_action_indices = self.over_inv_tuple_to_idx(
                     gt_actions, rand_fl_list, follow_gt)
-                over_loss = self.loss_fn['over'](new_invalid_tens, over_action_indices)
+                over_loss = torch.sum(self.loss_fn['over'](new_invalid_tens, over_action_indices))
                 loss['over'] = over_loss
-
-                loss['total'] = (loss['coref'] + self.over_loss_wt * loss['over'])
+                loss['total'] = loss['coref'] + loss['over']
 
             return loss, action_list, pred_mentions, gt_actions
         else:
