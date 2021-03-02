@@ -100,7 +100,7 @@ class LearnedFixedMemController(BaseController):
 
         return actions
 
-    def new_ignore_tuple_to_idx(self, action_tuple_list, rand_fl_list, follow_gt):
+    def new_ignore_tuple_to_idx(self, action_tuple_list):
         action_indices = []
 
         for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
@@ -111,8 +111,13 @@ class LearnedFixedMemController(BaseController):
                     # No space
                     action_indices.append(self.num_cells)
 
-        action_indices = torch.tensor(action_indices).to(self.device)
-        return action_indices
+        # The first num_cells are all overwrites - We skip that part
+        if len(action_indices) > self.num_cells:
+            action_indices = action_indices[self.num_cells:]
+            action_indices = torch.tensor(action_indices).to(self.device)
+            return action_indices
+        else:
+            return []
 
     def action_to_coref_new_idx(self, action_tuple_list):
         action_indices = []
@@ -166,14 +171,16 @@ class LearnedFixedMemController(BaseController):
                     coref_loss = torch.sum(
                         label_smoothing_fn(action_prob_tens, action_indices.unsqueeze(dim=1), weight=self.coref_loss_wts))
                     loss['coref'] = coref_loss
+                    loss['total'] += loss['coref']
 
-                    # Calculate overwrite loss
-                    new_ignore_tens = torch.stack(new_ignore_list, dim=0).to(self.device)
-                    new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions, rand_fl_list, follow_gt)
-                    over_loss = torch.sum(self.loss_fn(new_ignore_tens, new_ignore_indices))
-                    loss['over'] = over_loss
+                    # Calculate new-ignore loss
+                    if len(new_ignore_list) > 0:
+                        new_ignore_tens = torch.stack(new_ignore_list, dim=0).to(self.device)
+                        new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
+                        over_loss = torch.sum(self.loss_fn(new_ignore_tens, new_ignore_indices))
+                        loss['over'] = over_loss
 
-                    loss['total'] += loss['coref'] + loss['over']
+                        loss['total'] += loss['over']
             return loss, action_list, pred_mentions, gt_actions
         else:
             return 0.0, action_list, pred_mentions, gt_actions

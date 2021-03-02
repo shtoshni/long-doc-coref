@@ -9,7 +9,7 @@ class UnboundedMemoryNoIgnore(UnboundedMemory):
     def predict_action(self, query_vector, ment_score, mem_vectors,
                        ent_counter, feature_embs):
         coref_new_scores = self.get_coref_new_scores(
-            query_vector, ment_score, mem_vectors, ent_counter, feature_embs)
+            query_vector, mem_vectors, ent_counter, feature_embs, ment_score=ment_score)
         return coref_new_scores
 
     def interpret_scores(self, coref_new_scores, first_overwrite):
@@ -30,7 +30,8 @@ class UnboundedMemoryNoIgnore(UnboundedMemory):
         else:
             raise NotImplementedError
 
-    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata, teacher_forcing=False):
+    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
+                rand_fl_list=None, teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
 

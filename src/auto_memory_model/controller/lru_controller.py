@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from auto_memory_model.memory.lru_memory import LRUMemory
-from auto_memory_model.controller.lfm_controller import LearnedFixedMemController
+from auto_memory_model.controller.lfm_controller_2 import LearnedFixedMemController
 from coref_utils.utils import get_mention_to_cluster_idx
 from pytorch_utils.label_smoothing import LabelSmoothingLoss
 import numpy as np
