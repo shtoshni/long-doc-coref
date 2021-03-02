@@ -28,7 +28,7 @@ class Experiment:
                  # Model params
                  seed=0, init_lr=2e-4, max_gradient_norm=10.0,
                  max_epochs=20, max_segment_len=512, eval=False, num_train_docs=None,
-                 mem_type="unbounded", no_singletons=False,
+                 mem_type="unbounded", train_with_singletons=False,
                  # Other params
                  slurm_id=None, conll_data_dir=None, conll_scorer=None, **kwargs):
         self.args = args
@@ -39,17 +39,25 @@ class Experiment:
         self.pretrained_mention_model = pretrained_mention_model
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
-        self.cluster_threshold = None
         self.dataset = dataset
+        self.train_with_singletons = train_with_singletons
+
+        if train_with_singletons:
+            self.cluster_threshold = 1
+        else:
+            self.cluster_threshold = 2
+
+        self.canonical_cluster_threshold = None
+
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
             self.max_stuck_epochs = 5  # Maximum epochs without improvement in dev performance
-            self.cluster_threshold = (2 if no_singletons else 1)  # Use singletons for eval unless specified
+            self.canonical_cluster_threshold = 1
         else:
             # OntoNotes
             self.update_frequency = 100
             self.max_stuck_epochs = 5
-            self.cluster_threshold = 2  # No singletons in OntoNotes
+            self.canonical_cluster_threshold = 2
 
         self.max_epochs = max_epochs
         self.train_examples, self.dev_examples, self.test_examples \
@@ -188,7 +196,8 @@ class Experiment:
             self.train_info['epoch'] = epoch + 1
 
             # Dev performance
-            fscore = self.eval_model()['fscore']
+            cluster_threshold = max(self.cluster_threshold, self.canonical_cluster_threshold)
+            fscore = self.eval_model(cluster_threshold=cluster_threshold)['fscore']
 
             # Assume that the model didn't improve
             self.train_info['num_stuck_epochs'] += 1
@@ -214,7 +223,7 @@ class Experiment:
             if self.train_info['num_stuck_epochs'] >= self.max_stuck_epochs:
                 return
 
-    def eval_model(self, split='dev', final_eval=False):
+    def eval_model(self, split='dev', final_eval=False, cluster_threshold=1):
         """Eval model"""
         # Set the random seed to get consistent results
         model = self.model
@@ -251,9 +260,9 @@ class Experiment:
                     predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
 
                     predicted_clusters, mention_to_predicted =\
-                        get_mention_to_cluster(predicted_clusters, threshold=self.cluster_threshold)
+                        get_mention_to_cluster(predicted_clusters, threshold=cluster_threshold)
                     gold_clusters, mention_to_gold =\
-                        get_mention_to_cluster(example["clusters"], threshold=self.cluster_threshold)
+                        get_mention_to_cluster(example["clusters"], threshold=cluster_threshold)
 
                     coref_predictions[example["doc_key"]] = predicted_clusters
                     subtoken_maps[example["doc_key"]] = example["subtoken_map"]
@@ -264,7 +273,7 @@ class Experiment:
 
                     oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
                     oracle_clusters, mention_to_oracle = \
-                        get_mention_to_cluster(oracle_clusters, threshold=self.cluster_threshold)
+                        get_mention_to_cluster(oracle_clusters, threshold=cluster_threshold)
                     evaluator.update(predicted_clusters, gold_clusters,
                                      mention_to_predicted, mention_to_gold)
                     oracle_evaluator.update(oracle_clusters, gold_clusters,
@@ -342,13 +351,20 @@ class Experiment:
             output_dict[key] = val
 
         for split in ['dev', 'test']:
-            logging.info('\n')
-            logging.info('%s' % split.capitalize())
-            result_dict = self.eval_model(split, final_eval=True)
-            if split != 'test':
-                logging.info('Calculated F1: %.3f' % result_dict['fscore'])
+            if self.train_with_singletons:
+                cluster_thresholds = [1, 2]
+            else:
+                cluster_thresholds = [2]
+            for cluster_threshold in cluster_thresholds:
+                logging.info('\n')
+                logging.info('%s' % split.capitalize())
+                result_dict = self.eval_model(split, final_eval=True, cluster_threshold=cluster_threshold)
+                if split != 'test':
+                    logging.info('Calculated F1: %.3f' % result_dict['fscore'])
 
-            output_dict[split] = result_dict
+                output_dict[f"{split}_{cluster_threshold}"] = result_dict
+                if cluster_threshold == self.canonical_cluster_threshold:
+                    output_dict[f"{split}"] = result_dict
 
         json.dump(output_dict, open(perf_file, 'w'), indent=2)
 

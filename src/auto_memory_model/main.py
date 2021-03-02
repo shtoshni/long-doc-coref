@@ -78,7 +78,7 @@ def main():
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=2e-4, type=float)
-    parser.add_argument('-no_singletons', help="No singletons.",
+    parser.add_argument('-train_with_singletons', help="Train on singletons.",
                         default=False, action="store_true")
     parser.add_argument('-eval', help="Evaluate model",
                         default=False, action="store_true")
@@ -99,10 +99,10 @@ def main():
     # Only include important options in hash computation
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio', # Mention model
-                'mem_type', 'num_cells', 'entity_rep', 'mlp_size', 'mlp_depth', 'emb_size',  # Memory params
+                'mem_type', 'num_cells', 'entity_rep', 'mlp_size', 'mlp_depth',  # Memory params
                 'dropout_rate', 'seed', 'init_lr',
                 "new_ent_wt", 'sample_invalid',  'max_training_segments', 'label_smoothing_wt',  # weights & sampling
-                'dataset', 'num_train_docs', 'cross_val_split',   # Dataset params
+                'num_train_docs', 'cross_val_split', 'train_with_singletons',   # Dataset params
                 ]
     for key, val in vars(args).items():
         if key in imp_opts:
@@ -110,7 +110,7 @@ def main():
 
     str_repr = str(opt_dict.items())
     hash_idx = hashlib.md5(str_repr.encode("utf-8")).hexdigest()
-    model_name = "coref_" + str(hash_idx)
+    model_name = f"coref_{args.dataset}_" + str(hash_idx)
 
     model_dir = path.join(args.base_model_dir, model_name)
     args.model_dir = model_dir
@@ -125,8 +125,12 @@ def main():
     if args.dataset == 'litbank':
         args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
         args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll/{args.cross_val_split}')
-    else:
-        args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
+    elif args.dataset == 'ontonotes':
+        if args.train_with_singletons:
+            enc_str = "_singletons"
+        else:
+            enc_str = ""
+        args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}{enc_str}')
         args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
 
     print(args.data_dir)
