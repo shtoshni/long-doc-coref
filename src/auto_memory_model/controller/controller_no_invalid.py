@@ -1,17 +1,16 @@
 import torch
 import numpy as np
 
-from auto_memory_model.memory import UnboundedMemoryNoIgnore
-from auto_memory_model.controller import UnboundedMemController
+from auto_memory_model.memory import MemoryNoInvalid
+from auto_memory_model.controller import BaseController
 from coref_utils.utils import get_mention_to_cluster_idx
-from pytorch_utils.label_smoothing import LabelSmoothingLoss
 
 
-class UnboundedMemControllerNoIgnore(UnboundedMemController):
+class ControllerNoInvalid(BaseController):
     def __init__(self, **kwargs):
-        super(UnboundedMemControllerNoIgnore, self).__init__(**kwargs)
+        super(ControllerNoInvalid, self).__init__(**kwargs)
 
-        self.memory_net = UnboundedMemoryNoIgnore(
+        self.memory_net = MemoryNoInvalid(
             hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
             drop_module=self.drop_module, **kwargs)
 
@@ -46,37 +45,6 @@ class UnboundedMemControllerNoIgnore(UnboundedMemController):
                     cell_counter += 1
 
         return actions
-
-    def calculate_coref_loss(self, action_prob_list, action_tuple_list):
-        num_cells = 0
-        coref_loss = 0.0
-        target_list = []
-
-        # First filter the action tuples to sample invalid
-        for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
-            if action_str == 'c':
-                gt_idx = cell_idx
-            elif action_str == 'o':
-                # Overwrite
-                gt_idx = (1 if num_cells == 0 else num_cells)
-                num_cells += 1
-            else:
-                continue
-
-            target = torch.tensor([gt_idx]).to(self.device)
-            target_list.append(target)
-
-        for idx, target in enumerate(target_list):
-            weight = torch.ones_like(action_prob_list[idx]).float().to(self.device)
-            weight[-1] = self.new_ent_wt
-            if self.training:
-                label_smoothing_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=0)
-            else:
-                label_smoothing_fn = LabelSmoothingLoss(smoothing=0.0, dim=0)
-
-            coref_loss += label_smoothing_fn(pred=action_prob_list[idx], target=target, weight=weight)
-
-        return coref_loss
 
     def forward(self, example, teacher_forcing=False):
         """

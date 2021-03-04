@@ -1,34 +1,10 @@
 import torch
-from auto_memory_model.memory import UnboundedMemory
+from auto_memory_model.memory import BaseMemory
 
 
-class UnboundedMemoryNoIgnore(UnboundedMemory):
+class MemoryNoInvalid(BaseMemory):
     def __init__(self, **kwargs):
-        super(UnboundedMemoryNoIgnore, self).__init__(**kwargs)
-
-    def predict_action(self, query_vector, ment_score, mem_vectors,
-                       ent_counter, feature_embs):
-        coref_new_scores = self.get_coref_new_scores(
-            query_vector, mem_vectors, ent_counter, feature_embs, ment_score=ment_score)
-        return coref_new_scores
-
-    def interpret_scores(self, coref_new_scores, first_overwrite):
-        if first_overwrite:
-            num_ents = 0
-            num_cells = 1
-        else:
-            num_ents = coref_new_scores.shape[0] - 1
-            num_cells = num_ents
-
-        pred_max_idx = torch.argmax(coref_new_scores).item()
-        if pred_max_idx < num_cells:
-            # Coref
-            return pred_max_idx, 'c'
-        elif pred_max_idx == num_cells:
-            # Overwrite/Invalid mention
-            return num_ents, 'o'
-        else:
-            raise NotImplementedError
+        super(MemoryNoInvalid, self).__init__(**kwargs)
 
     def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
                 rand_fl_list=None, teacher_forcing=False):
@@ -48,20 +24,17 @@ class UnboundedMemoryNoIgnore(UnboundedMemory):
             metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
 
-            if not (follow_gt and gt_action_str == 'i'):
-                # This part of the code executes in the following cases:
-                # (a) Inference
-                # (b) Training and the mention is not an invalid or
-                coref_new_scores = self.predict_action(
-                    query_vector, ment_score, mem_vectors,
-                    ent_counter, feature_embs)
-
-                pred_cell_idx, pred_action_str = self.interpret_scores(
-                    coref_new_scores, first_overwrite)
-                action_logit_list.append(coref_new_scores)
-                action_list.append((pred_cell_idx, pred_action_str))
-            else:
+            # Sample invalid spans during training
+            ign_invalid_span = (follow_gt and gt_action_str == 'i')
+            if ign_invalid_span:
                 continue
+
+            coref_new_scores = self.get_coref_new_scores(
+                query_vector, mem_vectors, ent_counter, feature_embs, ment_score=ment_score)
+
+            pred_cell_idx, pred_action_str = self.assign_cluster(coref_new_scores, first_overwrite)
+            action_logit_list.append(coref_new_scores)
+            action_list.append((pred_cell_idx, pred_action_str))
 
             if follow_gt:
                 # Training - Operate over the ground truth

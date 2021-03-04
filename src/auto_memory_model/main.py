@@ -19,8 +19,13 @@ def main():
     # Add arguments to parser
     parser.add_argument(
         '-base_data_dir', default='../data/', help='Root directory of data', type=str)
+    parser.add_argument(
+        '-data_dir', default=None, help='Data directory. Use this when it is specified', type=str)
     parser.add_argument('-base_model_dir', default='../models',
                         help='Root folder storing model runs', type=str)
+    parser.add_argument('-model_dir', default=None,
+                        help='Model directory', type=str)
+
     parser.add_argument(
         '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
     parser.add_argument(
@@ -46,8 +51,10 @@ def main():
     parser.add_argument('-mem_type', default='learned',
                         choices=['learned', 'lru', 'unbounded', 'unbounded_no_ignore'],
                         help="Memory type.")
-    parser.add_argument('-num_cells', default=20, type=int,
-                        help="Number of memory cells.")
+    parser.add_argument('-max_ents', default=20, type=int,
+                        help="Number of maximum entities in memory.")
+    parser.add_argument('-eval_max_ents', default=None, type=int,
+                        help="Number of maximum entities in memory during inference.")
     parser.add_argument('-mlp_size', default=3000, type=int,
                         help='MLP size used in the model')
     parser.add_argument('-mlp_depth', default=1, type=int,
@@ -82,30 +89,40 @@ def main():
                         default=2e-4, type=float)
     parser.add_argument('-train_with_singletons', help="Train on singletons.",
                         default=False, action="store_true")
-    parser.add_argument('-eval', help="Evaluate model",
+    parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
                         default=False, action="store_true")
     parser.add_argument('-slurm_id', help="Slurm ID",
                         default=None, type=str)
 
     args = parser.parse_args()
 
+    # Get model directory name
+    opt_dict = OrderedDict()
+    # Only include important options in hash computation
+    imp_opts = ['model_size', 'max_segment_len',  # Encoder params
+                'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
+                'mem_type', 'entity_rep', 'mlp_size', 'mlp_depth',  # Memory params
+                'dropout_rate', 'seed', 'init_lr',
+                "new_ent_wt", 'sample_invalid',  'max_training_segments', 'label_smoothing_wt',  # weights & sampling
+                'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
+                ]
+
+    # Adding conditional important options
+    if args.mem_type in ['learned', 'lru']:
+        # Number of max entities only matters for bounded memory models
+        imp_opts.append('max_ents')
+    else:
+        args.max_ents = None
+
     if args.dataset == 'litbank':
         args.max_span_width = 20
+        # Cross-validation split is only important for litbank
+        imp_opts.append('cross_val_split')
     elif args.dataset == 'ontonotes':
         args.max_span_width = 30
     else:
         args.max_span_width = 20
 
-    # Get model directory name
-    opt_dict = OrderedDict()
-    # Only include important options in hash computation
-    imp_opts = ['model_size', 'max_segment_len',  # Encoder params
-                'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio', # Mention model
-                'mem_type', 'num_cells', 'entity_rep', 'mlp_size', 'mlp_depth',  # Memory params
-                'dropout_rate', 'seed', 'init_lr',
-                "new_ent_wt", 'sample_invalid',  'max_training_segments', 'label_smoothing_wt',  # weights & sampling
-                'num_train_docs', 'cross_val_split', 'train_with_singletons',   # Dataset params
-                ]
     for key, val in vars(args).items():
         if key in imp_opts:
             opt_dict[key] = val
@@ -114,26 +131,34 @@ def main():
     hash_idx = hashlib.md5(str_repr.encode("utf-8")).hexdigest()
     model_name = f"coref_{args.dataset}_" + str(hash_idx)
 
-    model_dir = path.join(args.base_model_dir, model_name)
-    args.model_dir = model_dir
-    print(model_dir)
-    best_model_dir = path.join(model_dir, 'best_models')
-    args.best_model_dir = best_model_dir
-    if not path.exists(model_dir):
-        os.makedirs(model_dir)
-    if not path.exists(best_model_dir):
-        os.makedirs(best_model_dir)
+    if args.model_dir is None:
+        model_dir = path.join(args.base_model_dir, model_name)
+        args.model_dir = model_dir
+        best_model_dir = path.join(model_dir, 'best_models')
+        args.best_model_dir = best_model_dir
+        if not path.exists(model_dir):
+            os.makedirs(model_dir)
+        if not path.exists(best_model_dir):
+            os.makedirs(best_model_dir)
+    else:
+        best_model_dir = path.join(args.model_dir, 'best_models')
+        if not path.exists(best_model_dir):
+            best_model_dir = args.model_dir
+        args.best_model_dir = best_model_dir
 
-    if args.dataset == 'litbank':
-        args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
-        args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll/{args.cross_val_split}')
-    elif args.dataset == 'ontonotes':
-        if args.train_with_singletons:
-            enc_str = "_singletons"
-        else:
-            enc_str = ""
-        args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}{enc_str}')
-        args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
+    print("Model directory:", args.model_dir)
+
+    if args.data_dir is None:
+        if args.dataset == 'litbank':
+            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
+            args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll/{args.cross_val_split}')
+        elif args.dataset == 'ontonotes':
+            if args.train_with_singletons:
+                enc_str = "_singletons"
+            else:
+                enc_str = ""
+            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}{enc_str}')
+            args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
 
     print(args.data_dir)
 
@@ -143,11 +168,11 @@ def main():
     print(args.pretrained_mention_model)
 
     # Log directory for Tensorflow Summary
-    log_dir = path.join(model_dir, "logs")
+    log_dir = path.join(args.model_dir, "logs")
     if not path.exists(log_dir):
         os.makedirs(log_dir)
 
-    config_file = path.join(model_dir, 'config')
+    config_file = path.join(args.model_dir, 'config')
     with open(config_file, 'w') as f:
         for key, val in opt_dict.items():
             logging.info('%s: %s' % (key, val))

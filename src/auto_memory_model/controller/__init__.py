@@ -1,4 +1,3 @@
-from auto_memory_model.controller.lfm_controller_2 import LearnedFixedMemController
-from auto_memory_model.controller.lru_controller import LRUController
-from auto_memory_model.controller.um_controller import UnboundedMemController
-from auto_memory_model.controller.um_controller_no_ignore import UnboundedMemControllerNoIgnore
+from auto_memory_model.controller.base_controller import BaseController
+from auto_memory_model.controller.controller_pred_invalid import ControllerPredInvalid
+from auto_memory_model.controller.controller_no_invalid import ControllerNoInvalid

@@ -9,7 +9,7 @@ LOG2 = math.log(2)
 class BaseMemory(nn.Module):
     def __init__(self, hsize=300, mlp_size=200, mlp_depth=1, drop_module=None,
                  emb_size=20, entity_rep='max', dataset='litbank', sample_invalid=1.0,
-                 device="cuda", **kwargs):
+                 device="cuda", max_ents=None, **kwargs):
         super(BaseMemory, self).__init__()
         self.device = device
 
@@ -19,6 +19,7 @@ class BaseMemory(nn.Module):
         elif self.dataset == 'ontonotes':
             self.num_feats = 4
 
+        self.max_ents = max_ents
         self.sample_invalid = sample_invalid
 
         self.hsize = hsize
@@ -44,6 +45,13 @@ class BaseMemory(nn.Module):
         self.last_action_embeddings = nn.Embedding(5, self.emb_size)
         self.distance_embeddings = nn.Embedding(10, self.emb_size)
         self.counter_embeddings = nn.Embedding(10, self.emb_size)
+
+    def initialize_memory(self):
+        """Initialize the memory to null with only 1 memory cell to begin with."""
+        mem = torch.zeros(1, self.mem_size).to(self.device)
+        ent_counter = torch.tensor([0.0]).to(self.device)
+        last_mention_idx = torch.zeros(1).long().to(self.device)
+        return mem, ent_counter, last_mention_idx
 
     @staticmethod
     def get_distance_bucket(distances):
@@ -86,15 +94,15 @@ class BaseMemory(nn.Module):
 
         if 'genre' in metadata:
             genre_emb = metadata['genre']
-            num_cells = distance_embs.shape[0]
-            genre_emb = torch.unsqueeze(genre_emb, dim=0).repeat(num_cells, 1)
+            num_ents = distance_embs.shape[0]
+            genre_emb = torch.unsqueeze(genre_emb, dim=0).repeat(num_ents, 1)
             feature_embs_list.append(genre_emb)
 
         if 'last_action' in metadata:
             last_action_idx = torch.tensor(metadata['last_action']).long().to(self.device)
             last_action_emb = self.last_action_embeddings(last_action_idx)
-            num_cells = distance_embs.shape[0]
-            last_action_emb = torch.unsqueeze(last_action_emb, dim=0).repeat(num_cells, 1)
+            num_ents = distance_embs.shape[0]
+            last_action_emb = torch.unsqueeze(last_action_emb, dim=0).repeat(num_ents, 1)
             feature_embs_list.append(last_action_emb)
 
         feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
@@ -122,8 +130,8 @@ class BaseMemory(nn.Module):
     def get_coref_new_scores(self, query_vector, mem_vectors,
                              ent_counter, feature_embs, ment_score=0):
         # Repeat the query vector for comparison against all cells
-        num_cells = mem_vectors.shape[0]
-        rep_query_vector = query_vector.repeat(num_cells, 1)  # M x H
+        num_ents = mem_vectors.shape[0]
+        rep_query_vector = query_vector.repeat(num_ents, 1)  # M x H
 
         # Coref Score
         pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector, feature_embs], dim=-1)
@@ -136,6 +144,21 @@ class BaseMemory(nn.Module):
 
         coref_new_not_scores = coref_new_scores * coref_new_mask + (1 - coref_new_mask) * (-1e4)
         return coref_new_not_scores
+
+    @staticmethod
+    def assign_cluster(coref_new_scores, first_overwrite):
+        if first_overwrite:
+            num_ents = 0
+        else:
+            num_ents = coref_new_scores.shape[0] - 1
+
+        pred_max_idx = torch.argmax(coref_new_scores).item()
+        if pred_max_idx < num_ents:
+            # Coref
+            return pred_max_idx, 'c'
+        else:
+            # New cluster
+            return num_ents, 'o'
 
     def coref_update(self, mem_vectors, query_vector, cell_idx, mask, ent_counter):
         if self.entity_rep == 'learned_avg':

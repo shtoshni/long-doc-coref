@@ -4,18 +4,22 @@ import torch.nn as nn
 from document_encoder.independent import IndependentDocEncoder
 from document_encoder.overlap import OverlapDocEncoder
 from pytorch_utils.modules import MLP
+from pytorch_utils.label_smoothing import LabelSmoothingLoss
 
 
 class BaseController(nn.Module):
     def __init__(self,
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
+                 max_ents=None,
                  emb_size=20, sample_invalid=1.0, label_smoothing_wt=0.0,
                  dataset='litbank', device='cuda', **kwargs):
         super(BaseController, self).__init__()
 
         self.device = device
         self.dataset = dataset
+        # Max entities in memory
+        self.max_ents = max_ents
 
         self.max_span_width = max_span_width
         self.top_span_ratio = top_span_ratio
@@ -58,7 +62,11 @@ class BaseController(nn.Module):
                                   drop_module=self.drop_module)
 
         self.memory_net = None
-        self.loss_fn = {}
+        self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=-100)
+
+    def set_max_ents(self, max_ents):
+        self.max_ents = max_ents
+        self.memory_net.max_ents = max_ents
 
     def get_span_embeddings(self, encoded_doc, ment_starts, ment_ends):
         span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
@@ -102,9 +110,8 @@ class BaseController(nn.Module):
 
         sent_map = torch.tensor(example["sentence_map"], device=self.device)
         # num_words x max_span_width
-        cand_starts = torch.unsqueeze(torch.arange(num_words), dim=1).repeat(1, self.max_span_width).to(
-            device=self.device
-        )
+        cand_starts = (torch.unsqueeze(torch.arange(num_words), dim=1).to(device=self.device)).\
+            repeat(1, self.max_span_width)
         cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width), dim=0).to(device=self.device)
 
         cand_start_sent_indices = sent_map[cand_starts]
@@ -177,21 +184,50 @@ class BaseController(nn.Module):
         mention_emb_list = torch.unbind(mention_embs, dim=0)
         return pred_mentions, gt_actions, mention_emb_list, pred_scores
 
-    def entity_or_not_entity_gt(self, action_tuple_list, rand_fl_list, follow_gt):
+    def entity_or_not_entity_gt(self, action_tuple_list, rand_fl_list):
         action_indices = []
 
         for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
-            if action_str == 'c' or action_str == 'o':
+            if action_str != 'i':
                 action_indices.append(0)
-            elif action_str == 'i':
+            elif action_str == 'i' and (rand_fl_list[idx] <= self.sample_invalid):
                 # Not a mention
-                if follow_gt and rand_fl_list[idx] > self.sample_invalid:
-                    pass
-                else:
-                    action_indices.append(1)
+                action_indices.append(1)
 
         action_indices = torch.tensor(action_indices).to(self.device)
         return action_indices
+
+    def calculate_coref_loss(self, action_prob_list, action_tuple_list):
+        num_ents = 0
+        coref_loss = 0.0
+        target_list = []
+
+        # First filter the action tuples to sample invalid
+        for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
+            if action_str == 'c':
+                gt_idx = cell_idx
+            elif action_str == 'o':
+                # Overwrite
+                gt_idx = (1 if num_ents == 0 else num_ents)
+                if self.max_ents is None or num_ents < self.max_ents:
+                    num_ents += 1
+            else:
+                continue
+
+            target = torch.tensor([gt_idx]).to(self.device)
+            target_list.append(target)
+
+        for idx, target in enumerate(target_list):
+            weight = torch.ones_like(action_prob_list[idx]).float().to(self.device)
+            weight[-1] = self.new_ent_wt
+            if self.training:
+                label_smoothing_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=0)
+            else:
+                label_smoothing_fn = LabelSmoothingLoss(smoothing=0.0, dim=0)
+
+            coref_loss += label_smoothing_fn(pred=action_prob_list[idx], target=target, weight=weight)
+
+        return coref_loss
 
     def get_genre_embedding(self, examples):
         genre = examples["doc_key"][:2]

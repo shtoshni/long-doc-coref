@@ -27,9 +27,10 @@ class Experiment:
                  pretrained_mention_model=None,
                  # Model params
                  seed=0, init_lr=2e-4, max_gradient_norm=10.0,
-                 max_epochs=20, max_segment_len=512, eval=False,
+                 max_epochs=20, max_segment_len=512, eval_model=False,
                  num_train_docs=None, num_eval_docs=None,
                  mem_type="unbounded", train_with_singletons=False,
+                 eval_max_ents=None,
                  # Other params
                  slurm_id=None, conll_data_dir=None, conll_scorer=None, **kwargs):
         self.args = args
@@ -88,25 +89,37 @@ class Experiment:
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Initialize model and training metadata
-        self.model = pick_controller(mem_type=mem_type, dataset=dataset, device=self.device, **kwargs)
+        if eval_model:
+            checkpoint = torch.load(self.best_model_path, map_location=self.device)
+            self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
+            self.model.load_state_dict(checkpoint['model'], strict=False)
+            # Finally evaluate model
+            if eval_max_ents is not None:
+                self.model.set_max_ents(eval_max_ents)
+                print(eval_max_ents)
 
-        self.train_info, self.optimizer, self.optim_scheduler = {}, None, None
-        # Train info is a dictionary to keep around important training variables
-        self.train_info['epoch'] = 0
-        self.train_info['val_perf'] = 0.0
-        self.train_info['global_steps'] = 0
-        self.train_info['num_stuck_epochs'] = 0
+            self.final_eval()
+        else:
+            # Initialize model and training metadata
+            self.model = pick_controller(mem_type=mem_type, dataset=dataset, device=self.device, **kwargs)
 
-        self.initialize_setup(init_lr=init_lr)
-        utils.print_model_info(self.model)
-        sys.stdout.flush()
+            self.train_info, self.optimizer, self.optim_scheduler = {}, None, None
+            # Train info is a dictionary to keep around important training variables
+            self.train_info['epoch'] = 0
+            self.train_info['val_perf'] = 0.0
+            self.train_info['global_steps'] = 0
+            self.train_info['num_stuck_epochs'] = 0
 
-        if not eval:
+            self.initialize_setup(init_lr=init_lr)
+            utils.print_model_info(self.model)
+            sys.stdout.flush()
+
             self.train(max_epochs=max_epochs, max_gradient_norm=max_gradient_norm)
 
-        # Finally evaluate model
-        self.final_eval()
+            self.load_model(self.best_model_path, model_type='best')
+            logging.info("Loading best model after epoch: %d" %
+                         self.train_info['epoch'])
+            self.final_eval()
 
     def initialize_setup(self, init_lr):
         """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
@@ -338,10 +351,6 @@ class Experiment:
     def final_eval(self):
         """Evaluate the model on train, dev, and test"""
         # Test performance  - Load best model
-        self.load_model(self.best_model_path, model_type='best')
-        logging.info("Loading best model after epoch: %d" %
-                     self.train_info['epoch'])
-
         perf_file = path.join(self.model_dir, "perf.json")
         if self.slurm_id:
             parent_dir = path.dirname(path.normpath(self.model_dir))
