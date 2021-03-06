@@ -13,11 +13,12 @@ class BaseController(nn.Module):
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
                  max_ents=None,
                  emb_size=20, sample_invalid=1.0, label_smoothing_wt=0.0,
-                 dataset='litbank', device='cuda', **kwargs):
+                 dataset='litbank', device='cuda', use_gold_ments=False, **kwargs):
         super(BaseController, self).__init__()
 
         self.device = device
         self.dataset = dataset
+        self.use_gold_ments = use_gold_ments
         # Max entities in memory
         self.max_ents = max_ents
 
@@ -71,7 +72,8 @@ class BaseController(nn.Module):
     def get_span_embeddings(self, encoded_doc, ment_starts, ment_ends):
         span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
         # Add span width embeddings
-        span_width_indices = ment_ends - ment_starts
+        span_width_indices = torch.clamp(ment_ends - ment_starts, max=self.max_span_width)
+        # print(span_width_indices)
         span_width_embs = self.drop_module(self.span_width_embeddings(span_width_indices))
         span_emb_list.append(span_width_embs)
 
@@ -82,16 +84,16 @@ class BaseController(nn.Module):
             ment_masks = ((doc_range >= torch.unsqueeze(ment_starts, dim=1)) &
                           (doc_range <= torch.unsqueeze(ment_ends, dim=1)))  # [C x T]
 
-            del doc_range
-            del ment_starts
-            del ment_ends
+            # del doc_range
+            # del ment_starts
+            # del ment_ends
 
             word_attn = torch.squeeze(self.mention_attn(encoded_doc), dim=1)  # [T]
             mention_word_attn = nn.functional.softmax(
                 (1 - ment_masks.float()) * (-1e10) + torch.unsqueeze(word_attn, dim=0), dim=1)  # [C x T]
 
-            del word_attn
-            del ment_masks
+            # del word_attn
+            # del ment_masks
 
             attention_term = torch.matmul(mention_word_attn, encoded_doc)  # K x H
             span_emb_list.append(attention_term)
@@ -139,7 +141,7 @@ class BaseController(nn.Module):
 
         mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
         # Span embeddings not needed anymore
-        del span_embs
+        # del span_embs
         mention_logits += self.get_mention_width_scores(filt_cand_starts, filt_cand_ends)
 
         k = int(self.top_span_ratio * num_words)
@@ -166,7 +168,19 @@ class BaseController(nn.Module):
 
     def get_mention_embs_and_actions(self, example):
         encoded_doc = self.doc_encoder(example)
-        pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
+        # pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
+        # print(pred_starts.shape)
+        if not self.use_gold_ments:
+            pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
+        else:
+            mentions = []
+            for cluster in example["clusters"]:
+                mentions.extend(cluster)
+            pred_starts, pred_ends = zip(*mentions)
+            pred_starts = torch.tensor(pred_starts).to(self.device)
+            pred_ends = torch.tensor(pred_ends).to(self.device)
+            # Fake positive score
+            pred_scores = torch.tensor([1.0] * len(mentions)).to(self.device)
 
         # Sort the predicted mentions
         pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
@@ -179,7 +193,7 @@ class BaseController(nn.Module):
 
         mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
 
-        del encoded_doc
+        # del encoded_doc
 
         mention_emb_list = torch.unbind(mention_embs, dim=0)
         return pred_mentions, gt_actions, mention_emb_list, pred_scores
@@ -231,7 +245,10 @@ class BaseController(nn.Module):
 
     def get_genre_embedding(self, examples):
         genre = examples["doc_key"][:2]
-        genre_idx = self.genre_to_idx[genre]
+        if genre in self.genre_to_idx:
+            genre_idx = self.genre_to_idx[genre]
+        else:
+            genre_idx = self.genre_to_idx['nw']
         return self.genre_embeddings(torch.tensor(genre_idx, device=self.device))
 
     def forward(self, example, teacher_forcing=False):

@@ -30,7 +30,7 @@ class Experiment:
                  max_epochs=20, max_segment_len=512, eval_model=False,
                  num_train_docs=None, num_eval_docs=None,
                  mem_type="unbounded", train_with_singletons=False,
-                 eval_max_ents=None,
+                 eval_max_ents=None, use_gold_ments=False,
                  # Other params
                  slurm_id=None, conll_data_dir=None, conll_scorer=None, **kwargs):
         self.args = args
@@ -49,8 +49,7 @@ class Experiment:
         else:
             self.cluster_threshold = 2
 
-        self.canonical_cluster_threshold = None
-
+        self.canonical_cluster_threshold = 1
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
             self.max_stuck_epochs = 5  # Maximum epochs without improvement in dev performance
@@ -96,7 +95,15 @@ class Experiment:
             # Finally evaluate model
             if eval_max_ents is not None:
                 self.model.set_max_ents(eval_max_ents)
-                print(eval_max_ents)
+            if use_gold_ments is not None:
+                self.model.use_gold_ments = use_gold_ments
+
+            if args.dataset != self.model.dataset:
+                # Change the default mention detection constants
+                if args.max_span_width is not None:
+                    self.model.max_span_width = args.max_span_width
+                if args.top_span_ratio is not None:
+                    self.model.top_span_ratio = args.top_span_ratio
 
             self.final_eval()
         else:
@@ -364,10 +371,12 @@ class Experiment:
             output_dict[key] = val
 
         for split in ['dev', 'test']:
-            if self.train_with_singletons:
-                cluster_thresholds = [1, 2]
-            else:
-                cluster_thresholds = [2]
+            # if self.train_with_singletons:
+            #     cluster_thresholds = [1, 2]
+            # else:
+            #     cluster_thresholds = [2]
+            # cluster_thresholds = [1, 2]
+            cluster_thresholds = [self.canonical_cluster_threshold]
             for cluster_threshold in cluster_thresholds:
                 logging.info('\n')
                 logging.info('%s' % split.capitalize())

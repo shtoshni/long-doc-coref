@@ -44,6 +44,7 @@ def main():
     # Mention variables
     parser.add_argument('-max_span_width', default=20, type=int, help='Max span width.')
     parser.add_argument('-ment_emb', default='attn', choices=['attn', 'endpoint'], type=str)
+    parser.add_argument('-use_gold_ments', default=False, action="store_true")
     parser.add_argument('-top_span_ratio', default=0.3, type=float,
                         help='Ratio of top spans proposed as mentions.')
 
