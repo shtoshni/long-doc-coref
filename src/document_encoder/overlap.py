@@ -8,14 +8,14 @@ class OverlapDocEncoder(BaseDocEncoder):
     def __init__(self, **kwargs):
         super(OverlapDocEncoder, self).__init__(**kwargs)
 
-    def encode_doc(self, example):
+    def encode_doc(self, example, max_training_segments=None):
         """
         Encode chunks of a document.
         batch_excerpt: C x L where C is number of chunks padded upto max length of L
         text_length_list: list of length of chunks (length C)
         """
-        if self.training and self.max_training_segments is not None:
-            example = self.truncate_document(example)
+        if self.training and max_training_segments is not None:
+            example = self.truncate_document(example, max_training_segments=max_training_segments)
         sentences = example["real_sentences"]
         start_indices = example["start_indices"]
         end_indices = example["end_indices"]
@@ -46,39 +46,26 @@ class OverlapDocEncoder(BaseDocEncoder):
         encoded_output = encoded_output
         return encoded_output
 
-    def truncate_document(self, example):
+    def truncate_document(self, example, max_training_segments=None):
         num_sentences = len(example["real_sentences"])
-
-        if num_sentences > self.max_training_segments:
-            sentence_offset = random.randint(0, num_sentences - self.max_training_segments)
+        if num_sentences > max_training_segments:
+            sentence_offset = random.randint(0, num_sentences - max_training_segments)
             word_offset = sum([(end_idx - start_idx)
                                for start_idx, end_idx in zip(example["start_indices"][:sentence_offset],
                                                              example["end_indices"][:sentence_offset])])
-            sentences = example["real_sentences"][sentence_offset: sentence_offset + self.max_training_segments]
+            sentences = example["real_sentences"][sentence_offset: sentence_offset + max_training_segments]
 
-            start_indices = example["start_indices"][sentence_offset: sentence_offset + self.max_training_segments]
+            start_indices = example["start_indices"][sentence_offset: sentence_offset + max_training_segments]
             # Set first window to start at 0th token
             word_offset -= start_indices[0]
             start_indices[0] = 0
 
-            end_indices = example["end_indices"][sentence_offset: sentence_offset + self.max_training_segments]
+            end_indices = example["end_indices"][sentence_offset: sentence_offset + max_training_segments]
             # Set last window to end at last token
             end_indices[-1] = len(sentences[-1])
 
             num_words = sum([(end_idx - start_idx) for start_idx, end_idx in zip(start_indices, end_indices)])
             sentence_map = example["sentence_map"][word_offset: word_offset + num_words]
-
-            # if word_offset > 0:
-            #     try:
-            #         assert(example["sentence_map"][word_offset] != example["sentence_map"][word_offset - 1])
-            #     except AssertionError:
-            #         print(example["doc_key"], sentence_offset, example["sentence_map"][word_offset - 10: word_offset])
-            # if (sentence_offset + self.max_training_segments) < num_sentences:
-            #     idx = word_offset + num_words - 1
-            #     try:
-            #         assert(example["sentence_map"][idx] != example["sentence_map"][idx + 1])
-            #     except AssertionError:
-            #         print(example["doc_key"], sentence_offset, example["sentence_map"][idx: idx + 10])
 
             clusters = []
             for orig_cluster in example["clusters"]:
@@ -100,5 +87,5 @@ class OverlapDocEncoder(BaseDocEncoder):
         else:
             return example
 
-    def forward(self, example):
-        return self.encode_doc(example)
+    def forward(self, example, max_training_segments=None):
+        return self.encode_doc(example, max_training_segments=max_training_segments)

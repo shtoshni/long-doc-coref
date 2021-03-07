@@ -12,7 +12,8 @@ class BaseController(nn.Module):
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
                  max_ents=None,
-                 emb_size=20, sample_invalid=1.0, label_smoothing_wt=0.0,
+                 emb_size=20, sample_invalid=1.0,
+                 new_ent_wt=1.0, label_smoothing_wt=0.0,
                  dataset='litbank', device='cuda', use_gold_ments=False, **kwargs):
         super(BaseController, self).__init__()
 
@@ -25,6 +26,8 @@ class BaseController(nn.Module):
         self.max_span_width = max_span_width
         self.top_span_ratio = top_span_ratio
         self.sample_invalid = sample_invalid
+
+        self.new_ent_wt = new_ent_wt
         self.label_smoothing_wt = label_smoothing_wt
 
         if doc_enc == 'independent':
@@ -166,8 +169,8 @@ class BaseController(nn.Module):
 
         return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices]
 
-    def get_mention_embs_and_actions(self, example):
-        encoded_doc = self.doc_encoder(example)
+    def get_mention_embs_and_actions(self, example, max_training_segments=None):
+        encoded_doc = self.doc_encoder(example, max_training_segments=max_training_segments)
         # pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
         # print(pred_starts.shape)
         if not self.use_gold_ments:
@@ -251,5 +254,5 @@ class BaseController(nn.Module):
             genre_idx = self.genre_to_idx['nw']
         return self.genre_embeddings(torch.tensor(genre_idx, device=self.device))
 
-    def forward(self, example, teacher_forcing=False):
+    def forward(self, example, teacher_forcing=False, max_training_segments=None):
         pass

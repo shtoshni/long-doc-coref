@@ -68,6 +68,8 @@ def main():
     # Training params
     parser.add_argument('-cross_val_split', default=0, type=int,
                         help='Cross validation split to be used.')
+    parser.add_argument('-use_curriculum', default=False, action="store_true",
+                        help='Use curriculum learning by increasing max document length during training.')
     parser.add_argument('-new_ent_wt', help='Weight of new entity term in coref loss',
                         default=1.0, type=float)
     parser.add_argument('-num_train_docs', default=None, type=int,
@@ -103,7 +105,7 @@ def main():
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size', 'mlp_depth',  # Memory params
-                'dropout_rate', 'seed', 'init_lr',
+                'dropout_rate', 'seed', 'init_lr', 'use_curriculum',
                 "new_ent_wt", 'sample_invalid',  'max_training_segments', 'label_smoothing_wt',  # weights & sampling
                 'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
                 ]
@@ -160,8 +162,12 @@ def main():
                 enc_str = ""
             args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}{enc_str}')
             args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
+    else:
+        if args.dataset == 'ontonotes':
+            args.conll_data_dir = path.join(path.dirname(args.data_dir.rstrip("/")), "conll")
 
     print(args.data_dir)
+    print(args.conll_data_dir)
 
     # Get mention model name
     args.pretrained_mention_model = path.join(

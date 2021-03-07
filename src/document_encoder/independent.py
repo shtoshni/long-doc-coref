@@ -35,8 +35,9 @@ class IndependentDocEncoder(BaseDocEncoder):
 
         return encoded_output
 
-    def tensorize_example(self, example):
-        if self.training and self.max_training_segments is not None:
+    def tensorize_example(self, example, max_training_segments=None):
+        # if self.training and self.max_training_segments is not None:
+        if self.training and max_training_segments is not None:
             example = self.truncate_document(example)
         sentences = example["sentences"]
 
@@ -78,5 +79,5 @@ class IndependentDocEncoder(BaseDocEncoder):
         else:
             return example
 
-    def forward(self, example):
-        return self.encode_doc(*self.tensorize_example(example))
+    def forward(self, example, max_training_segments=None):
+        return self.encode_doc(*self.tensorize_example(example, max_training_segments=max_training_segments))

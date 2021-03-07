@@ -9,9 +9,8 @@ from pytorch_utils.label_smoothing import LabelSmoothingLoss
 
 
 class ControllerPredInvalid(BaseController):
-    def __init__(self, max_ents=None, mem_type='unbounded', new_ent_wt=1.0, **kwargs):
+    def __init__(self, max_ents=None, mem_type='unbounded', **kwargs):
         super(ControllerPredInvalid, self).__init__(**kwargs)
-        self.new_ent_wt = new_ent_wt
         self.mem_type = mem_type
         if mem_type != 'unbounded':
             self.max_ents = max_ents
@@ -59,11 +58,12 @@ class ControllerPredInvalid(BaseController):
         else:
             return []
 
-    def forward(self, example, teacher_forcing=False):
+    def forward(self, example, teacher_forcing=False, max_training_segments=None):
         """
         Encode a batch of excerpts.
         """
-        pred_mentions, gt_actions, mention_emb_list, mention_score_list = self.get_mention_embs_and_actions(example)
+        pred_mentions, gt_actions, mention_emb_list, mention_score_list = self.get_mention_embs_and_actions(
+            example, max_training_segments=max_training_segments)
 
         metadata = {}
         if self.dataset == 'ontonotes':

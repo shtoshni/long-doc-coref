@@ -30,7 +30,7 @@ class Experiment:
                  max_epochs=20, max_segment_len=512, eval_model=False,
                  num_train_docs=None, num_eval_docs=None,
                  mem_type="unbounded", train_with_singletons=False,
-                 eval_max_ents=None, use_gold_ments=False,
+                 eval_max_ents=None, use_gold_ments=False, use_curriculum=True,
                  # Other params
                  slurm_id=None, conll_data_dir=None, conll_scorer=None, **kwargs):
         self.args = args
@@ -43,6 +43,7 @@ class Experiment:
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
         self.dataset = dataset
         self.train_with_singletons = train_with_singletons
+        self.use_curriculum = use_curriculum
 
         if train_with_singletons:
             self.cluster_threshold = 1
@@ -173,14 +174,25 @@ class Experiment:
             np.random.shuffle(self.train_examples)
             # pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
 
-            for cur_example in self.train_examples:
+            if self.use_curriculum:
+                max_training_segments = model.doc_encoder.max_training_segments
+                if max_training_segments is not None:
+                    import math
+                    # Linearly increase max training segments as a function of epochs
+                    cur_max_training_segments = int(math.ceil((max_training_segments * (epoch + 1))/max_epochs))
+                else:
+                    cur_max_training_segments = None
+            else:
+                # No curriculume
+                cur_max_training_segments = model.doc_encoder.max_training_segments
 
+            for cur_example in self.train_examples:
                 def handle_example(example):
                     optimizer.zero_grad()
 
                     # Send the copy of the example, as the document could be truncated during training
                     from copy import deepcopy
-                    loss = model(deepcopy(example))[0]
+                    loss = model(deepcopy(example), max_training_segments=cur_max_training_segments)[0]
                     total_loss = loss['total']
                     if total_loss is None:
                         return None
