@@ -10,6 +10,7 @@ import numpy as np
 import pytorch_utils.utils as utils
 from mention_model.controller import Controller
 from data_utils.utils import load_data
+from coref_utils.utils import remove_singletons
 
 EPS = 1e-8
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -23,7 +24,7 @@ class Experiment:
                  max_epochs=20, max_segment_len=128, eval=False,
                  num_train_docs=None,
                  # Other params
-                 slurm_id=None,
+                 slurm_id=None, train_with_singletons=False,
                  **kwargs):
 
         self.pretrained_model = pretrained_model
@@ -36,6 +37,12 @@ class Experiment:
         # self.dev_examples = self.dev_examples[:20]
         if num_train_docs is not None:
             self.train_examples = self.train_examples[:num_train_docs]
+
+        if train_with_singletons is False:
+            print("Removing singletons")
+            self.train_examples, self.dev_examples, self.test_examples = \
+                [remove_singletons(x) for x in [self.train_examples, self.dev_examples, self.test_examples]]
+
         self.data_iter_map = {"train": self.train_examples,
                               "valid": self.dev_examples,
                               "test": self.test_examples}
@@ -102,7 +109,6 @@ class Experiment:
         for epoch in range(epochs_done, max_epochs):
             print("\n\nStart Epoch %d" % (epoch + 1))
             start_time = time.time()
-            # with autograd.detect_anomaly():
             model.train()
             np.random.shuffle(self.train_examples)
 

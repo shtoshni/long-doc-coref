@@ -90,6 +90,10 @@ def main():
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=2e-4, type=float)
+    parser.add_argument('-warmup_frac', default=0.0, type=float,
+                        help="Fraction of total steps for warming up")
+    parser.add_argument('-lr_decay', default='linear', type=str,
+                        help="Decay mechanism used for learning rate decay")
     parser.add_argument('-train_with_singletons', help="Train on singletons.",
                         default=False, action="store_true")
     parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
@@ -125,6 +129,12 @@ def main():
         args.max_span_width = 30
     else:
         args.max_span_width = 20
+
+    # Optimization params
+    if args.warmup_frac != 0.0:
+        imp_opts.append('warmup_frac')
+    if args.lr_decay != 'linear':
+        imp_opts.append('lr_decay')
 
     for key, val in vars(args).items():
         if key in imp_opts:

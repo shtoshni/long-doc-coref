@@ -16,13 +16,13 @@ def main():
 
     # Add arguments to parser
     parser.add_argument(
-        '-base_data_dir', default='../data',
-        help='Root directory of data', type=str)
+        '-base_data_dir', default='../data', help='Root directory of data', type=str)
+    parser.add_argument(
+        '-data_dir', default=None, help='Data directory. Use this when it is specified', type=str)
     parser.add_argument(
         '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
     parser.add_argument('-base_model_dir',
-                        default='../models',
-                        help='Root folder storing model runs', type=str)
+                        default='../models', help='Root folder storing model runs', type=str)
     parser.add_argument('-model_size', default='large', type=str,
                         help='BERT model type')
     parser.add_argument('-doc_enc', default='overlap', type=str,
@@ -34,7 +34,7 @@ def main():
     parser.add_argument('-top_span_ratio', default=0.3, type=float,
                         help='Ratio of top spans proposed as mentions.')
 
-    parser.add_argument('-ment_emb', default='endpoint', choices=['attn', 'max', 'endpoint'],
+    parser.add_argument('-ment_emb', default='attn', choices=['attn', 'max', 'endpoint'],
                         type=str)
     parser.add_argument('-max_span_width',
                         help='Max span width', default=20, type=int)
@@ -57,6 +57,8 @@ def main():
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=5e-4, type=float)
+    parser.add_argument('-train_with_singletons', default=False, action="store_true",
+                        help='Whether to use singletons during training or not.')
     parser.add_argument('-checkpoint', help="Use checkpoint",
                         default=False, action="store_true")
     parser.add_argument('-eval', help="Evaluate model",
@@ -78,15 +80,11 @@ def main():
     if not path.exists(best_model_dir):
         os.makedirs(best_model_dir)
 
-    if args.dataset == 'litbank':
-        args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
-    else:
-        args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
-
-    # if args.dataset == 'ontonotes':
-    #     args.pretrained_model = path.join(
-    #         args.pretrained_mention_model_dir, f'mention_ontonotes_{args.model_size}_{args.ment_emb}.pt')
-    # Log directory for Tensorflow Summary
+    if args.data_dir is None:
+        if args.dataset == 'litbank':
+            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
+        else:
+            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
 
     Experiment(**vars(args))
 

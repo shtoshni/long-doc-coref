@@ -15,7 +15,10 @@ from coref_utils.conll import evaluate_conll
 from coref_utils.utils import get_mention_to_cluster
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
+from coref_utils.utils import remove_singletons
 from auto_memory_model.controller.utils import pick_controller
+from pytorch_utils.optimization_utils import get_inverse_square_root_decay
+
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
@@ -31,6 +34,7 @@ class Experiment:
                  num_train_docs=None, num_eval_docs=None,
                  mem_type="unbounded", train_with_singletons=False,
                  eval_max_ents=None, use_gold_ments=False, use_curriculum=True,
+                 lr_decay='linear', warmup_frac=0.0,
                  # Other params
                  slurm_id=None, conll_data_dir=None, conll_scorer=None, **kwargs):
         self.args = args
@@ -42,13 +46,22 @@ class Experiment:
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
         self.dataset = dataset
+        self.train_examples, self.dev_examples, self.test_examples \
+            = load_data(data_dir, max_segment_len, dataset=self.dataset)
+        if num_train_docs is not None:
+            self.train_examples = self.train_examples[:num_train_docs]
+        if num_eval_docs is not None:
+            self.dev_examples = self.dev_examples[:num_eval_docs]
+            self.test_examples = self.test_examples[:num_eval_docs]
+
         self.train_with_singletons = train_with_singletons
-        self.use_curriculum = use_curriculum
 
         if train_with_singletons:
             self.cluster_threshold = 1
         else:
             self.cluster_threshold = 2
+            # Remove singletons from training set
+            self.train_examples = remove_singletons(self.train_examples)
 
         self.canonical_cluster_threshold = 1
         if self.dataset == 'litbank':
@@ -61,18 +74,12 @@ class Experiment:
             self.max_stuck_epochs = 5
             self.canonical_cluster_threshold = 2
 
-        self.max_epochs = max_epochs
-        self.train_examples, self.dev_examples, self.test_examples \
-            = load_data(data_dir, max_segment_len, dataset=self.dataset)
-        if num_train_docs is not None:
-            self.train_examples = self.train_examples[:num_train_docs]
-        if num_eval_docs is not None:
-            self.dev_examples = self.dev_examples[:num_eval_docs]
-            self.test_examples = self.test_examples[:num_eval_docs]
-
         self.data_iter_map = {"train": self.train_examples,
                               "dev": self.dev_examples,
                               "test": self.test_examples}
+
+        self.max_epochs = max_epochs
+        self.use_curriculum = use_curriculum
 
         self.slurm_id = slurm_id  # Useful to keep this around for grid searches
 
@@ -118,37 +125,39 @@ class Experiment:
             self.train_info['global_steps'] = 0
             self.train_info['num_stuck_epochs'] = 0
 
-            self.initialize_setup(init_lr=init_lr)
+            self.initialize_setup(init_lr=init_lr, lr_decay=lr_decay, warmup_frac=warmup_frac)
             utils.print_model_info(self.model)
             sys.stdout.flush()
 
             self.train(max_epochs=max_epochs, max_gradient_norm=max_gradient_norm)
 
             self.load_model(self.best_model_path, model_type='best')
-            logging.info("Loading best model after epoch: %d" %
-                         self.train_info['epoch'])
+            logger.info("Loading best model after epoch: %d" % self.train_info['epoch'])
             self.final_eval()
 
-    def initialize_setup(self, init_lr):
+    def initialize_setup(self, init_lr, lr_decay='linear', warmup_frac=0.0):
         """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
         param_list = []
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 param_list.append(param)
 
-        self.optimizer = torch.optim.AdamW(
-            param_list, lr=init_lr, eps=1e-6)
+        self.optimizer = torch.optim.AdamW(param_list, lr=init_lr, eps=1e-6)
+        num_training_steps = len(self.train_examples) * self.max_epochs
+        num_warmup_steps = warmup_frac * num_training_steps
 
-        self.optim_scheduler = get_linear_schedule_with_warmup(
-            self.optimizer, num_warmup_steps=0,
-            num_training_steps=len(self.train_examples) * self.max_epochs)
+        if lr_decay == 'inv':
+            self.optim_scheduler = get_inverse_square_root_decay(self.optimizer, num_warmup_steps=num_warmup_steps)
+        else:
+            self.optim_scheduler = get_linear_schedule_with_warmup(
+                self.optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
 
         if not path.exists(self.model_path):
             torch.manual_seed(self.seed)
             np.random.seed(self.seed)
             # Try to initialize the mention model part
             if path.exists(self.pretrained_mention_model):
-                print("Found pretrained model!!")
+                logger.info("Found pretrained model!!")
                 checkpoint = torch.load(self.pretrained_mention_model)
                 self.model.load_state_dict(checkpoint['model'], strict=False)
         else:
@@ -233,6 +242,7 @@ class Experiment:
 
             # Dev performance
             cluster_threshold = max(self.cluster_threshold, self.canonical_cluster_threshold)
+            # print("Cluster threshold:", cluster_threshold)
             fscore = self.eval_model(cluster_threshold=cluster_threshold)['fscore']
 
             # Assume that the model didn't improve

@@ -17,5 +17,12 @@ def get_mention_model_name(args):
     if model_name_suffix[-1] == '_':
         model_name_suffix = model_name_suffix[:-1]
 
+    if args.train_with_singletons and args.dataset == 'ontonotes':
+        model_name_suffix += '_singleton'
+    elif (not args.train_with_singletons) and args.dataset == 'litbank':
+        model_name_suffix += '_no_singleton'
+
     model_name = "ment_" + model_name_suffix
     return model_name
+
+

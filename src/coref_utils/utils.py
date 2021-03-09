@@ -29,3 +29,11 @@ def get_ordered_mentions(clusters):
     all_mentions = sorted(all_mentions, key=lambda x: x[0] + 1e-5 * x[1])
     return all_mentions
 
+
+def remove_singletons(data, key="clusters"):
+    data_without_singletons = []
+    for instance in data:
+        instance[key] = [cluster for cluster in instance[key] if len(cluster) > 1]
+        data_without_singletons.append(instance)
+
+    return data_without_singletons
