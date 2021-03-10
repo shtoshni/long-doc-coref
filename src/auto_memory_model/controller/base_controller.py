@@ -114,9 +114,19 @@ class BaseController(nn.Module):
         num_words = encoded_doc.shape[0]
 
         sent_map = torch.tensor(example["sentence_map"], device=self.device)
+
+        word_start = []
+        last_subword_idx = -1
+        for idx, subword_idx in enumerate(example["subtoken_map"]):
+            if subword_idx != last_subword_idx:
+                word_start.append(idx)
+                last_subword_idx = subword_idx
+
         # num_words x max_span_width
-        cand_starts = (torch.unsqueeze(torch.arange(num_words), dim=1).to(device=self.device)).\
+        cand_starts = (torch.unsqueeze(torch.tensor(word_start).to(device=self.device), dim=1)). \
             repeat(1, self.max_span_width)
+        # cand_starts = (torch.unsqueeze(torch.arange(num_words), dim=1).to(device=self.device)).\
+        #     repeat(1, self.max_span_width)
         cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width), dim=0).to(device=self.device)
 
         cand_start_sent_indices = sent_map[cand_starts]
@@ -127,6 +137,7 @@ class BaseController(nn.Module):
         # End before document ends & Same sentence
         constraint1 = (cand_ends < num_words)
         constraint2 = (cand_start_sent_indices == cand_end_sent_indices)
+
         cand_mask = constraint1 & constraint2
         flat_cand_mask = cand_mask.reshape(-1)
 

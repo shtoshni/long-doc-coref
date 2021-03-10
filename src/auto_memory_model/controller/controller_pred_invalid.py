@@ -77,7 +77,7 @@ class ControllerPredInvalid(BaseController):
             rand_fl_list = np.zeros_like(rand_fl_list)
 
         entity_or_not_list, coref_new_list, new_ignore_list, action_list = self.memory_net(
-            mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
+            pred_mentions, mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
             teacher_forcing=teacher_forcing)
         loss = {'total': None}
         if follow_gt:

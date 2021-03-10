@@ -9,6 +9,12 @@ class MemoryPredInvalid(BaseMemory):
         self.mem_type = mem_type
         self.is_mem_bounded = self.max_ents is not None
 
+        # Remove last action feature - During test time we remove mentions with negative mention score (avoid for loop)
+        # Thus, if we use last action, there's a mismatch between features.
+        self.num_feats = self.num_feats - 1
+        self.mem_coref_mlp = MLP(3 * self.mem_size + self.num_feats * self.emb_size, self.mlp_size, 1,
+                                 num_hidden_layers=self.mlp_depth, bias=True, drop_module=self.drop_module)
+
         if self.is_mem_bounded:
             self.fert_mlp = MLP(input_size=self.mem_size + self.num_feats * self.emb_size,
                                 hidden_size=self.mlp_size, output_size=1, num_hidden_layers=self.mlp_depth,
@@ -49,7 +55,7 @@ class MemoryPredInvalid(BaseMemory):
             # No space - The new entity is not "fertile" enough
             return output + (-1, 'n')
 
-    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata, rand_fl_list,
+    def forward(self, ment_boundaries, mention_emb_list, mention_scores, gt_actions, metadata, rand_fl_list,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
@@ -60,16 +66,16 @@ class MemoryPredInvalid(BaseMemory):
         entity_or_not_list, coref_new_list, new_ignore_list = [], [], []
         action_list = []  # argmax actions
         first_overwrite = True
-        last_action_str = '<s>'
+        # last_action_str = '<s>'
 
         follow_gt = self.training or teacher_forcing
 
-        for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
-                enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
+        for ment_idx, ((ment_start, ment_end), ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
+                enumerate(zip(ment_boundaries, mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
             num_ents = mem_vectors.shape[0]
-            metadata['last_action'] = self.action_str_to_idx[last_action_str]
-            feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
+            # metadata['last_action'] = self.action_str_to_idx[last_action_str]
+            feature_embs = self.get_feature_embs(ment_start, last_mention_idx, ent_counter, metadata)
 
             # Sample invalid spans during training
             ign_invalid_span = (follow_gt and gt_action_str == 'i' and rand_fl_list[ment_idx] > self.sample_invalid)
@@ -116,14 +122,14 @@ class MemoryPredInvalid(BaseMemory):
                 action_str = pred_action_str
                 cell_idx = pred_cell_idx
 
-            last_action_str = action_str
+            # last_action_str = action_str
 
             if first_overwrite and action_str == 'o':
                 first_overwrite = False
                 # We start with a single empty memory cell
                 mem_vectors = torch.unsqueeze(query_vector, dim=0)
                 ent_counter = torch.tensor([1.0]).to(self.device)
-                last_mention_idx[0] = ment_idx
+                last_mention_idx[0] = ment_start
             else:
                 # Update the memory
                 cell_mask = (torch.arange(0, num_ents) == cell_idx).float().to(self.device)
@@ -135,19 +141,19 @@ class MemoryPredInvalid(BaseMemory):
                     mem_vectors = self.coref_update(mem_vectors, query_vector, cell_idx, mask, ent_counter)
 
                     ent_counter = ent_counter + cell_mask
-                    last_mention_idx[cell_idx] = ment_idx
+                    last_mention_idx[cell_idx] = ment_start
                 elif action_str == 'o':
                     if cell_idx == num_ents:
                         # Append the new vector
                         mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(query_vector, dim=0)], dim=0)
 
                         ent_counter = torch.cat([ent_counter, torch.tensor([1.0]).to(self.device)], dim=0)
-                        last_mention_idx = torch.cat([last_mention_idx, torch.tensor([ment_idx]).to(self.device)],
+                        last_mention_idx = torch.cat([last_mention_idx, torch.tensor([ment_start]).to(self.device)],
                                                      dim=0)
                     else:
                         # Replace the cell content tracking another entity
                         mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(query_vector, dim=0)
-                        last_mention_idx[cell_idx] = ment_idx
+                        last_mention_idx[cell_idx] = ment_start
                         ent_counter = ent_counter * (1 - cell_mask) + cell_mask
 
             if self.mem_type == 'lru' and action_str in ['o', 'c']:
