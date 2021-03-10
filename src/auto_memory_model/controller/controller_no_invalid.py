@@ -88,4 +88,5 @@ class ControllerNoInvalid(BaseController):
 
             return loss, action_list, pred_mentions, gt_actions
         else:
-            return 0.0, action_list, pred_mentions, gt_actions
+            mention_scores = [mention_score.item() for mention_score in mention_score_list]
+            return 0.0, action_list, pred_mentions, mention_scores, gt_actions

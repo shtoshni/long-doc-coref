@@ -25,6 +25,8 @@ class ControllerPredInvalid(BaseController):
             drop_module=self.drop_module, **kwargs)
 
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
+        self.entity_loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1.0, self.new_ent_wt], device=self.device),
+                                                  reduction='none', ignore_index=-100)
 
     def get_actions(self, pred_mentions, gt_clusters):
         if self.mem_type == 'unbounded':
@@ -82,7 +84,7 @@ class ControllerPredInvalid(BaseController):
             if len(entity_or_not_list) > 0:
                 entity_invalid_tens = torch.stack(entity_or_not_list, dim=0)
                 entity_or_not_indices = self.entity_or_not_entity_gt(gt_actions, rand_fl_list)
-                entity_loss = torch.sum(self.loss_fn(entity_invalid_tens, entity_or_not_indices))
+                entity_loss = torch.sum(self.entity_loss_fn(entity_invalid_tens, entity_or_not_indices))
                 loss['entity'] = entity_loss
                 loss['total'] = loss['entity']
                 if len(coref_new_list) > 0:
@@ -101,4 +103,5 @@ class ControllerPredInvalid(BaseController):
                         loss['total'] += loss['ignore']
             return loss, action_list, pred_mentions, gt_actions
         else:
-            return 0.0, action_list, pred_mentions, gt_actions
+            mention_scores = [mention_score.item() for mention_score in mention_score_list]
+            return 0.0, action_list, pred_mentions, mention_scores, gt_actions

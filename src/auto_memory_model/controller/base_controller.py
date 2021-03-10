@@ -157,7 +157,8 @@ class BaseController(nn.Module):
                 topk_indices = torch.topk(mention_logits, k)[1]
             else:
                 topk_indices = torch.squeeze((mention_logits >= 0.0).nonzero(as_tuple=False), dim=1)
-                if k > topk_indices.shape[0]:
+                # if k > topk_indices.shape[0]:
+                if k < topk_indices.shape[0]:
                     topk_indices = torch.topk(mention_logits, k)[1]
 
         topk_starts = filt_cand_starts[topk_indices]
@@ -237,7 +238,6 @@ class BaseController(nn.Module):
 
         for idx, target in enumerate(target_list):
             weight = torch.ones_like(action_prob_list[idx]).float().to(self.device)
-            weight[-1] = self.new_ent_wt
             if self.training:
                 label_smoothing_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=0)
             else:

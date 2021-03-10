@@ -100,6 +100,7 @@ class Experiment:
             checkpoint = torch.load(self.best_model_path, map_location=self.device)
             self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
             self.model.load_state_dict(checkpoint['model'], strict=False)
+            print(checkpoint['model_args'])
             # Finally evaluate model
             if eval_max_ents is not None:
                 self.model.set_max_ents(eval_max_ents)
@@ -293,7 +294,7 @@ class Experiment:
                 coref_predictions, subtoken_maps = {}, {}
 
                 for example in data_iter:
-                    loss, action_list, pred_mentions, gt_actions = model(example)
+                    loss, action_list, pred_mentions, mention_scores, gt_actions = model(example)
                     for pred_action, gt_action in zip(action_list, gt_actions):
                         pred_class_counter[pred_action[1]] += 1
                         gt_class_counter[gt_action[1]] += 1
@@ -304,6 +305,11 @@ class Experiment:
                     total_actions += len(action_list)
 
                     predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+
+                    log_example = dict(example)
+                    log_example["pred_mentions"] = pred_mentions
+                    log_example["mention_scores"] = mention_scores
+                    log_example["raw_predicted_clusters"] = predicted_clusters
 
                     predicted_clusters, mention_to_predicted =\
                         get_mention_to_cluster(predicted_clusters, threshold=cluster_threshold)
@@ -325,7 +331,6 @@ class Experiment:
                     oracle_evaluator.update(oracle_clusters, gold_clusters,
                                             mention_to_oracle, mention_to_gold)
 
-                    log_example = dict(example)
                     log_example["gt_actions"] = gt_actions
                     log_example["pred_actions"] = action_list
                     log_example["predicted_clusters"] = predicted_clusters
