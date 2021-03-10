@@ -49,7 +49,7 @@ def main():
                         help='Ratio of top spans proposed as mentions.')
 
     # Memory variables
-    parser.add_argument('-mem_type', default='learned',
+    parser.add_argument('-mem_type', default='unbounded',
                         choices=['learned', 'lru', 'unbounded', 'unbounded_no_ignore'],
                         help="Memory type.")
     parser.add_argument('-max_ents', default=20, type=int,
@@ -79,10 +79,10 @@ def main():
     parser.add_argument('-max_training_segments', default=None, type=int,
                         help='Maximum number of BERT segments in a document.')
     parser.add_argument('-sample_invalid', help='Sample prob. of invalid mentions during training',
-                        default=0.2, type=float)
-    parser.add_argument('-dropout_rate', default=0.3, type=float,
+                        default=1.0, type=float)
+    parser.add_argument('-dropout_rate', default=0.4, type=float,
                         help='Dropout rate')
-    parser.add_argument('-label_smoothing_wt', default=0.0, type=float,
+    parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
                         help='Label Smoothing')
     parser.add_argument('-max_epochs',
                         help='Maximum number of epochs', default=30, type=int)
@@ -90,10 +90,11 @@ def main():
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=2e-4, type=float)
-    parser.add_argument('-warmup_frac', default=0.0, type=float,
+    parser.add_argument('-warmup_frac', default=0.1, type=float,
                         help="Fraction of total steps for warming up")
-    parser.add_argument('-lr_decay', default='linear', type=str,
+    parser.add_argument('-lr_decay', default='inv', type=str,
                         help="Decay mechanism used for learning rate decay")
+
     parser.add_argument('-train_with_singletons', help="Train on singletons.",
                         default=False, action="store_true")
     parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
@@ -109,7 +110,7 @@ def main():
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size', 'mlp_depth',  # Memory params
-                'dropout_rate', 'seed', 'init_lr', 'use_curriculum',
+                'dropout_rate', 'seed', 'init_lr', 'use_curriculum', 'warmup_frac', 'lr_decay',
                 "new_ent_wt", 'sample_invalid',  'max_training_segments', 'label_smoothing_wt',  # weights & sampling
                 'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
                 ]
@@ -129,12 +130,6 @@ def main():
         args.max_span_width = 30
     else:
         args.max_span_width = 20
-
-    # Optimization params
-    if args.warmup_frac != 0.0:
-        imp_opts.append('warmup_frac')
-    if args.lr_decay != 'linear':
-        imp_opts.append('lr_decay')
 
     for key, val in vars(args).items():
         if key in imp_opts:

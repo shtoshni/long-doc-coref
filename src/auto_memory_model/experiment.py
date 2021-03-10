@@ -66,7 +66,7 @@ class Experiment:
         self.canonical_cluster_threshold = 1
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
-            self.max_stuck_epochs = 5  # Maximum epochs without improvement in dev performance
+            self.max_stuck_epochs = 10  # Maximum epochs without improvement in dev performance
             self.canonical_cluster_threshold = 1
         else:
             # OntoNotes
@@ -350,25 +350,33 @@ class Experiment:
                 result_dict['fscore'] = round(fscore, 1)
                 logger.info("F-score: %.1f %s" % (fscore, perf_str))
 
-                # Only use CoNLL evaluator script for final evaluation
-                if final_eval and path.exists(self.conll_scorer) and path.exists(self.conll_data_dir):
-                    gold_path = path.join(self.conll_data_dir, f'{split}.conll')
-                    prediction_file = path.join(self.model_dir, f'{split}.conll')
-                    conll_results = evaluate_conll(
-                        self.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
+                # (1) Only use CoNLL evaluator script for final evaluation
+                # (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
+                use_conll = (cluster_threshold == self.canonical_cluster_threshold)
+                # (3) Check if the scorer and CoNLL annotation directory exist
+                path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir)
 
-                    for indv_metric in indv_metrics_list:
-                        result_dict[indv_metric] = OrderedDict()
-                        result_dict[indv_metric]['recall'] = round(conll_results[indv_metric.lower()]["r"], 1)
-                        result_dict[indv_metric]['precision'] = round(conll_results[indv_metric.lower()]["p"], 1)
-                        result_dict[indv_metric]['fscore'] = round(conll_results[indv_metric.lower()]["f"], 1)
+                try:
+                    if final_eval and use_conll and path_exists_bool:
+                        gold_path = path.join(self.conll_data_dir, f'{split}.conll')
+                        prediction_file = path.join(self.model_dir, f'{split}.conll')
+                        conll_results = evaluate_conll(
+                            self.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
 
-                    average_f1 = sum(results["f"] for results in conll_results.values()) / len(conll_results)
-                    result_dict['fscore'] = round(average_f1, 1)
+                        for indv_metric in indv_metrics_list:
+                            result_dict[indv_metric] = OrderedDict()
+                            result_dict[indv_metric]['recall'] = round(conll_results[indv_metric.lower()]["r"], 1)
+                            result_dict[indv_metric]['precision'] = round(conll_results[indv_metric.lower()]["p"], 1)
+                            result_dict[indv_metric]['fscore'] = round(conll_results[indv_metric.lower()]["f"], 1)
 
-                    logger.info("(CoNLL) F-score : %.1f, MUC: %.1f, Bcub: %.1f, CEAFE: %.1f"
-                                % (average_f1, conll_results["muc"]["f"], conll_results['bcub']["f"],
-                                    conll_results['ceafe']["f"]))
+                        average_f1 = sum(results["f"] for results in conll_results.values()) / len(conll_results)
+                        result_dict['fscore'] = round(average_f1, 1)
+
+                        logger.info("(CoNLL) F-score : %.1f, MUC: %.1f, Bcub: %.1f, CEAFE: %.1f"
+                                    % (average_f1, conll_results["muc"]["f"], conll_results['bcub']["f"],
+                                        conll_results['ceafe']["f"]))
+                except AttributeError:
+                    pass
 
                 logger.info("Action accuracy: %.3f, Oracle F-score: %.3f" %
                             (corr_actions/total_actions, oracle_evaluator.get_prf()[2]))
@@ -397,8 +405,9 @@ class Experiment:
             #     cluster_thresholds = [1, 2]
             # else:
             #     cluster_thresholds = [2]
-            # cluster_thresholds = [1, 2]
             cluster_thresholds = [self.canonical_cluster_threshold]
+            # if self.cluster_threshold != self.canonical_cluster_threshold:
+            # cluster_thresholds = [1, 2]
             for cluster_threshold in cluster_thresholds:
                 logging.info('\n')
                 logging.info('%s' % split.capitalize())

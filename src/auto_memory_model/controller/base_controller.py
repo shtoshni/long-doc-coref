@@ -136,6 +136,7 @@ class BaseController(nn.Module):
         return filt_cand_starts, filt_cand_ends
 
     def get_pred_mentions(self, example, encoded_doc, topk=False):
+        # num_words = (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1)
         num_words = encoded_doc.shape[0]
 
         filt_cand_starts, filt_cand_ends = self.get_candidate_endpoints(encoded_doc, example)
