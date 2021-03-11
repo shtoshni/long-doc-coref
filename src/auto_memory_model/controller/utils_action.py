@@ -1,19 +1,24 @@
 from coref_utils.utils import get_mention_to_cluster_idx
 
 
-def get_actions_unbounded(pred_mentions, clusters):
+def get_actions_unbounded(pred_mentions, clusters, rand_fl_list, follow_gt, sample_invalid):
     # Useful data structures
     mention_to_cluster = get_mention_to_cluster_idx(clusters)
 
     actions = []
-    cell_to_cluster = {}
     cluster_to_cell = {}
 
     cell_counter = 0
-    for mention in pred_mentions:
+    for idx, mention in enumerate(pred_mentions):
         if tuple(mention) not in mention_to_cluster:
-            # Not a mention
-            actions.append((-1, 'i'))
+            if follow_gt and rand_fl_list[idx] > sample_invalid:
+                # This invalid mention is ignored during training
+                actions.append((-1, 'i'))
+            else:
+                # Not a mention - Add to memory anyways.
+                # This is not a problem because singletons are removed during metric calculation.
+                actions.append((cell_counter, 'o'))
+                cell_counter += 1
         else:
             mention_cluster = mention_to_cluster[tuple(mention)]
             if mention_cluster in cluster_to_cell:
@@ -23,7 +28,6 @@ def get_actions_unbounded(pred_mentions, clusters):
                 # Cluster is not being tracked
                 # Add the mention to being tracked
                 cluster_to_cell[mention_cluster] = cell_counter
-                cell_to_cluster[cell_counter] = mention_cluster
                 actions.append((cell_counter, 'o'))
                 cell_counter += 1
 

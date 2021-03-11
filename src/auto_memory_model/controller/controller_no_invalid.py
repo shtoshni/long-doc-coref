@@ -3,7 +3,8 @@ import numpy as np
 
 from auto_memory_model.memory import MemoryNoInvalid
 from auto_memory_model.controller import BaseController
-from coref_utils.utils import get_mention_to_cluster_idx
+# from coref_utils.utils import get_mention_to_cluster_idx
+from auto_memory_model.controller.utils_action import get_actions_unbounded
 
 
 class ControllerNoInvalid(BaseController):
@@ -13,38 +14,6 @@ class ControllerNoInvalid(BaseController):
         self.memory_net = MemoryNoInvalid(
             hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
             drop_module=self.drop_module, **kwargs)
-
-    def get_actions(self, pred_mentions, clusters, rand_fl_list, follow_gt):
-        # Useful data structures
-        mention_to_cluster = get_mention_to_cluster_idx(clusters)
-
-        actions = []
-        cluster_to_cell = {}
-
-        cell_counter = 0
-        for idx, mention in enumerate(pred_mentions):
-            if tuple(mention) not in mention_to_cluster:
-                if follow_gt and rand_fl_list[idx] > self.sample_invalid:
-                    # This invalid mention is ignored during training
-                    actions.append((-1, 'i'))
-                else:
-                    # Not a mention - Add to memory anyways.
-                    # This is not a problem because singletons are removed during metric calculation.
-                    actions.append((cell_counter, 'o'))
-                    cell_counter += 1
-            else:
-                mention_cluster = mention_to_cluster[tuple(mention)]
-                if mention_cluster in cluster_to_cell:
-                    # Cluster is already being tracked
-                    actions.append((cluster_to_cell[mention_cluster], 'c'))
-                else:
-                    # Cluster is not being tracked
-                    # Add the mention to being tracked
-                    cluster_to_cell[mention_cluster] = cell_counter
-                    actions.append((cell_counter, 'o'))
-                    cell_counter += 1
-
-        return actions
 
     def forward(self, example, teacher_forcing=False, max_training_segments=None):
         """
@@ -71,7 +40,8 @@ class ControllerNoInvalid(BaseController):
             rand_fl_list = np.zeros_like(rand_fl_list)
 
         if "clusters" in example:
-            gt_actions = self.get_actions(pred_mentions, example["clusters"], rand_fl_list, follow_gt)
+            gt_actions = self.get_actions_unbounded(
+                pred_mentions, example["clusters"], rand_fl_list, follow_gt, self.sample_invalid)
         else:
             gt_actions = [(-1, 'i')] * len(pred_mentions)
         action_prob_list, action_list = self.memory_net(

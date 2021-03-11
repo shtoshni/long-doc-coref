@@ -28,13 +28,17 @@ class ControllerPredInvalid(BaseController):
         self.entity_loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1.0, self.new_ent_wt], device=self.device),
                                                   reduction='none', ignore_index=-100)
 
-    def get_actions(self, pred_mentions, gt_clusters):
-        if self.mem_type == 'unbounded':
-            return get_actions_unbounded(pred_mentions, gt_clusters)
-        elif self.mem_type == 'learned':
-            return get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents=self.max_ents)
-        elif self.mem_type == 'lru':
-            return get_actions_lru(pred_mentions, gt_clusters, max_ents=self.max_ents)
+    def get_actions(self, example, pred_mentions, rand_fl_list, follow_gt, sample_invalid):
+        if "clusters" in example:
+            gt_clusters = example["clusters"]
+            if self.mem_type == 'unbounded':
+                return get_actions_unbounded(pred_mentions, gt_clusters, rand_fl_list, follow_gt, sample_invalid)
+            elif self.mem_type == 'learned':
+                return get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents=self.max_ents)
+            elif self.mem_type == 'lru':
+                return get_actions_lru(pred_mentions, gt_clusters, max_ents=self.max_ents)
+        else:
+            return [(-1, 'i')] * len(pred_mentions)
 
     def new_ignore_tuple_to_idx(self, action_tuple_list):
         action_indices = []
@@ -64,17 +68,19 @@ class ControllerPredInvalid(BaseController):
         """
         Encode a batch of excerpts.
         """
-        pred_mentions, gt_actions, mention_emb_list, mention_score_list = self.get_mention_embs_and_actions(
+        pred_mentions, mention_emb_list, mention_score_list = self.get_mention_embs(
             example, max_training_segments=max_training_segments)
-
-        metadata = {}
-        if self.dataset == 'ontonotes':
-            metadata = {'genre': self.get_genre_embedding(example)}
 
         follow_gt = self.training or teacher_forcing
         rand_fl_list = np.random.random(len(mention_emb_list))
         if teacher_forcing:
             rand_fl_list = np.zeros_like(rand_fl_list)
+
+        gt_actions = self.get_actions(example, pred_mentions, rand_fl_list, follow_gt, self.sample_invalid)
+
+        metadata = {}
+        if self.dataset == 'ontonotes':
+            metadata = {'genre': self.get_genre_embedding(example)}
 
         entity_or_not_list, coref_new_list, new_ignore_list, action_list = self.memory_net(
             pred_mentions, mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
@@ -83,7 +89,7 @@ class ControllerPredInvalid(BaseController):
         if follow_gt:
             if len(entity_or_not_list) > 0:
                 entity_invalid_tens = torch.stack(entity_or_not_list, dim=0)
-                entity_or_not_indices = self.entity_or_not_entity_gt(gt_actions, rand_fl_list)
+                entity_or_not_indices = self.entity_or_not_entity_gt(action_list)
                 entity_loss = torch.sum(self.entity_loss_fn(entity_invalid_tens, entity_or_not_indices))
                 loss['entity'] = entity_loss
                 loss['total'] = loss['entity']

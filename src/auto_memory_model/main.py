@@ -79,7 +79,7 @@ def main():
     parser.add_argument('-max_training_segments', default=None, type=int,
                         help='Maximum number of BERT segments in a document.')
     parser.add_argument('-sample_invalid', help='Sample prob. of invalid mentions during training',
-                        default=1.0, type=float)
+                        default=0.0, type=float)
     parser.add_argument('-dropout_rate', default=0.4, type=float,
                         help='Dropout rate')
     parser.add_argument('-label_smoothing_wt', default=0.1, type=float,

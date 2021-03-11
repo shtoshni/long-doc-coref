@@ -58,7 +58,7 @@ class MemoryPredInvalid(BaseMemory):
     def forward(self, ment_boundaries, mention_emb_list, mention_scores, gt_actions, metadata, rand_fl_list,
                 teacher_forcing=False):
         # Initialize memory
-        mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
+        mem_vectors, ent_counter, last_mention_start = self.initialize_memory()
         lru_list = []
         if self.mem_type == 'lru':
             lru_list = list(range(self.max_ents))
@@ -70,17 +70,13 @@ class MemoryPredInvalid(BaseMemory):
 
         follow_gt = self.training or teacher_forcing
 
+        # print(len(gt_actions), len(mention_emb_list))
         for ment_idx, ((ment_start, ment_end), ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(ment_boundaries, mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
             num_ents = mem_vectors.shape[0]
             # metadata['last_action'] = self.action_str_to_idx[last_action_str]
-            feature_embs = self.get_feature_embs(ment_start, last_mention_idx, ent_counter, metadata)
-
-            # Sample invalid spans during training
-            ign_invalid_span = (follow_gt and gt_action_str == 'i' and rand_fl_list[ment_idx] > self.sample_invalid)
-            if ign_invalid_span:
-                continue
+            feature_embs = self.get_feature_embs(ment_start, last_mention_start, ent_counter, metadata)
 
             overwrite_ign_scores = torch.cat([torch.tensor([0.0]).to(self.device), -ment_score], dim=0)
             entity_or_not_list.append(overwrite_ign_scores)
@@ -129,7 +125,7 @@ class MemoryPredInvalid(BaseMemory):
                 # We start with a single empty memory cell
                 mem_vectors = torch.unsqueeze(query_vector, dim=0)
                 ent_counter = torch.tensor([1.0]).to(self.device)
-                last_mention_idx[0] = ment_start
+                last_mention_start[0] = ment_start
             else:
                 # Update the memory
                 cell_mask = (torch.arange(0, num_ents) == cell_idx).float().to(self.device)
@@ -141,19 +137,19 @@ class MemoryPredInvalid(BaseMemory):
                     mem_vectors = self.coref_update(mem_vectors, query_vector, cell_idx, mask, ent_counter)
 
                     ent_counter = ent_counter + cell_mask
-                    last_mention_idx[cell_idx] = ment_start
+                    last_mention_start[cell_idx] = ment_start
                 elif action_str == 'o':
                     if cell_idx == num_ents:
                         # Append the new vector
                         mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(query_vector, dim=0)], dim=0)
 
                         ent_counter = torch.cat([ent_counter, torch.tensor([1.0]).to(self.device)], dim=0)
-                        last_mention_idx = torch.cat([last_mention_idx, torch.tensor([ment_start]).to(self.device)],
+                        last_mention_start = torch.cat([last_mention_start, torch.tensor([ment_start]).to(self.device)],
                                                      dim=0)
                     else:
                         # Replace the cell content tracking another entity
                         mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(query_vector, dim=0)
-                        last_mention_idx[cell_idx] = ment_start
+                        last_mention_start[cell_idx] = ment_start
                         ent_counter = ent_counter * (1 - cell_mask) + cell_mask
 
             if self.mem_type == 'lru' and action_str in ['o', 'c']:

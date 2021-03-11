@@ -115,18 +115,8 @@ class BaseController(nn.Module):
 
         sent_map = torch.tensor(example["sentence_map"], device=self.device)
 
-        word_start = []
-        last_subword_idx = -1
-        for idx, subword_idx in enumerate(example["subtoken_map"]):
-            if subword_idx != last_subword_idx:
-                word_start.append(idx)
-                last_subword_idx = subword_idx
-
-        # num_words x max_span_width
-        cand_starts = (torch.unsqueeze(torch.tensor(word_start).to(device=self.device), dim=1)). \
+        cand_starts = (torch.unsqueeze(torch.arange(num_words), dim=1).to(device=self.device)).\
             repeat(1, self.max_span_width)
-        # cand_starts = (torch.unsqueeze(torch.arange(num_words), dim=1).to(device=self.device)).\
-        #     repeat(1, self.max_span_width)
         cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width), dim=0).to(device=self.device)
 
         cand_start_sent_indices = sent_map[cand_starts]
@@ -182,7 +172,7 @@ class BaseController(nn.Module):
 
         return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices]
 
-    def get_mention_embs_and_actions(self, example, max_training_segments=None):
+    def get_mention_embs(self, example, max_training_segments=None):
         encoded_doc = self.doc_encoder(example, max_training_segments=max_training_segments)
         # pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
         # print(pred_starts.shape)
@@ -202,28 +192,14 @@ class BaseController(nn.Module):
         pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
         pred_scores = torch.unbind(torch.unsqueeze(pred_scores, dim=1))
 
-        if "clusters" in example:
-            gt_actions = self.get_actions(pred_mentions, example["clusters"])
-        else:
-            gt_actions = [(-1, 'i')] * len(pred_mentions)
-
         mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
 
-        # del encoded_doc
-
         mention_emb_list = torch.unbind(mention_embs, dim=0)
-        return pred_mentions, gt_actions, mention_emb_list, pred_scores
 
-    def entity_or_not_entity_gt(self, action_tuple_list, rand_fl_list):
-        action_indices = []
+        return pred_mentions, mention_emb_list, pred_scores
 
-        for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
-            if action_str != 'i':
-                action_indices.append(0)
-            elif action_str == 'i' and (rand_fl_list[idx] <= self.sample_invalid):
-                # Not a mention
-                action_indices.append(1)
-
+    def entity_or_not_entity_gt(self, action_tuple_list):
+        action_indices = [1 if action_str == 'i' else 0 for (_, action_str) in action_tuple_list]
         action_indices = torch.tensor(action_indices).to(self.device)
         return action_indices
 

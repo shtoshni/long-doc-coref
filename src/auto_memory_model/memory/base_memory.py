@@ -86,8 +86,8 @@ class BaseMemory(nn.Module):
         cell_mask = (ent_counter > 0.0).float()
         return cell_mask
 
-    def get_feature_embs(self, ment_idx, last_mention_idx, ent_counter, metadata):
-        distance_embs = self.get_distance_emb(ment_idx - last_mention_idx)
+    def get_feature_embs(self, ment_start, last_mention_start, ent_counter, metadata):
+        distance_embs = self.get_distance_emb(ment_start - last_mention_start)
         counter_embs = self.get_counter_emb(ent_counter)
 
         feature_embs_list = [distance_embs, counter_embs]
