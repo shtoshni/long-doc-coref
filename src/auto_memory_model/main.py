@@ -21,6 +21,8 @@ def main():
         '-base_data_dir', default='../data/', help='Root directory of data', type=str)
     parser.add_argument(
         '-data_dir', default=None, help='Data directory. Use this when it is specified', type=str)
+    parser.add_argument('-singleton_file', default=None,
+                        help='Singleton mentions separately extracted for training.')
     parser.add_argument('-base_model_dir', default='../models',
                         help='Root folder storing model runs', type=str)
     parser.add_argument('-model_dir', default=None,
@@ -114,6 +116,9 @@ def main():
                 "new_ent_wt", 'sample_invalid',  'max_training_segments', 'label_smoothing_wt',  # weights & sampling
                 'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
                 ]
+
+    if args.singleton_file is not None and path.exists(args.singleton_file):
+        imp_opts.append('singleton_file')
 
     # Adding conditional important options
     if args.mem_type in ['learned', 'lru']:

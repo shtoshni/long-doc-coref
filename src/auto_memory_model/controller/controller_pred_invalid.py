@@ -25,8 +25,6 @@ class ControllerPredInvalid(BaseController):
             drop_module=self.drop_module, **kwargs)
 
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
-        self.entity_loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1.0, self.new_ent_wt], device=self.device),
-                                                  reduction='none', ignore_index=-100)
 
     def get_actions(self, example, pred_mentions, rand_fl_list, follow_gt, sample_invalid):
         if "clusters" in example:
@@ -90,7 +88,7 @@ class ControllerPredInvalid(BaseController):
             if len(entity_or_not_list) > 0:
                 entity_invalid_tens = torch.stack(entity_or_not_list, dim=0)
                 entity_or_not_indices = self.entity_or_not_entity_gt(action_list)
-                entity_loss = torch.sum(self.entity_loss_fn(entity_invalid_tens, entity_or_not_indices))
+                entity_loss = torch.sum(self.loss_fn(entity_invalid_tens, entity_or_not_indices))
                 loss['entity'] = entity_loss
                 loss['total'] = loss['entity']
                 if len(coref_new_list) > 0:

@@ -40,7 +40,7 @@ class ControllerNoInvalid(BaseController):
             rand_fl_list = np.zeros_like(rand_fl_list)
 
         if "clusters" in example:
-            gt_actions = self.get_actions_unbounded(
+            gt_actions = get_actions_unbounded(
                 pred_mentions, example["clusters"], rand_fl_list, follow_gt, self.sample_invalid)
         else:
             gt_actions = [(-1, 'i')] * len(pred_mentions)

@@ -26,7 +26,7 @@ logger = logging.getLogger()
 
 class Experiment:
     def __init__(self, args, data_dir=None, dataset='litbank',
-                 model_dir=None, best_model_dir=None,
+                 model_dir=None, best_model_dir=None, singleton_file=None,
                  pretrained_mention_model=None,
                  # Model params
                  seed=0, init_lr=2e-4, max_gradient_norm=10.0,
@@ -47,7 +47,8 @@ class Experiment:
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
         self.dataset = dataset
         self.train_examples, self.dev_examples, self.test_examples \
-            = load_data(data_dir, max_segment_len, dataset=self.dataset)
+            = load_data(data_dir, max_segment_len, dataset=self.dataset,
+                        singleton_file=singleton_file)
         if num_train_docs is not None:
             self.train_examples = self.train_examples[:num_train_docs]
         if num_eval_docs is not None:
@@ -71,7 +72,7 @@ class Experiment:
         else:
             # OntoNotes
             self.update_frequency = 100
-            self.max_stuck_epochs = 5
+            self.max_stuck_epochs = 10
             self.canonical_cluster_threshold = 2
 
         self.data_iter_map = {"train": self.train_examples,
@@ -281,6 +282,8 @@ class Experiment:
         pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
         num_gt_clusters, num_pred_clusters = 0, 0
 
+        inference_time = 0.0
+
         with torch.no_grad():
             log_file = path.join(self.model_dir, split + ".log.jsonl")
             with open(log_file, 'w') as f:
@@ -294,7 +297,9 @@ class Experiment:
                 coref_predictions, subtoken_maps = {}, {}
 
                 for example in data_iter:
+                    start_time = time.time()
                     loss, action_list, pred_mentions, mention_scores, gt_actions = model(example)
+
                     for pred_action, gt_action in zip(action_list, gt_actions):
                         pred_class_counter[pred_action[1]] += 1
                         gt_class_counter[gt_action[1]] += 1
@@ -305,6 +310,8 @@ class Experiment:
                     total_actions += len(action_list)
 
                     predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+                    elapsed_time = time.time() - start_time
+                    inference_time += elapsed_time
 
                     log_example = dict(example)
                     log_example["pred_mentions"] = pred_mentions
@@ -387,6 +394,8 @@ class Experiment:
                             (corr_actions/total_actions, oracle_evaluator.get_prf()[2]))
                 logger.info(log_file)
                 logger.handlers[0].flush()
+
+        logging.info("Inference time: %.2f" % inference_time)
 
         return result_dict
 
