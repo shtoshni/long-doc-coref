@@ -21,7 +21,7 @@ class ControllerPredInvalid(BaseController):
 
         self.memory_net = MemoryPredInvalid(
             mem_type=mem_type, max_ents=self.max_ents,
-            hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
+            hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 2 * self.emb_size,
             drop_module=self.drop_module, **kwargs)
 
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
@@ -62,12 +62,11 @@ class ControllerPredInvalid(BaseController):
         else:
             return []
 
-    def forward(self, example, teacher_forcing=False, max_training_segments=None):
+    def forward(self, example, teacher_forcing=False):
         """
         Encode a batch of excerpts.
         """
-        pred_mentions, mention_emb_list, mention_score_list = self.get_mention_embs(
-            example, max_training_segments=max_training_segments)
+        pred_mentions, mention_emb_list, mention_score_list = self.get_mention_embs(example)
 
         follow_gt = self.training or teacher_forcing
         rand_fl_list = np.random.random(len(mention_emb_list))
@@ -76,9 +75,7 @@ class ControllerPredInvalid(BaseController):
 
         gt_actions = self.get_actions(example, pred_mentions, rand_fl_list, follow_gt, self.sample_invalid)
 
-        metadata = {}
-        if self.dataset == 'ontonotes':
-            metadata = {'genre': self.get_genre_embedding(example)}
+        metadata = {'genre': self.get_genre_embedding(example)}
 
         entity_or_not_list, coref_new_list, new_ignore_list, action_list = self.memory_net(
             pred_mentions, mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,

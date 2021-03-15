@@ -8,14 +8,14 @@ class OverlapDocEncoder(BaseDocEncoder):
     def __init__(self, **kwargs):
         super(OverlapDocEncoder, self).__init__(**kwargs)
 
-    def encode_doc(self, example, max_training_segments=None):
+    def encode_doc(self, example):
         """
         Encode chunks of a document.
         batch_excerpt: C x L where C is number of chunks padded upto max length of L
         text_length_list: list of length of chunks (length C)
         """
-        if self.training and max_training_segments is not None:
-            example = self.truncate_document(example, max_training_segments=max_training_segments)
+        if self.training and self.max_training_segments is not None:
+            example = self.truncate_document(example)
         sentences = example["real_sentences"]
         start_indices = example["start_indices"]
         end_indices = example["end_indices"]
@@ -46,8 +46,9 @@ class OverlapDocEncoder(BaseDocEncoder):
         encoded_output = encoded_output
         return encoded_output
 
-    def truncate_document(self, example, max_training_segments=None):
+    def truncate_document(self, example):
         num_sentences = len(example["real_sentences"])
+        max_training_segments = self.max_training_segments
         if num_sentences > max_training_segments:
             sentence_offset = random.randint(0, num_sentences - max_training_segments)
             word_offset = sum([(end_idx - start_idx)
@@ -87,5 +88,5 @@ class OverlapDocEncoder(BaseDocEncoder):
         else:
             return example
 
-    def forward(self, example, max_training_segments=None):
-        return self.encode_doc(example, max_training_segments=max_training_segments)
+    def forward(self, example):
+        return self.encode_doc(example)

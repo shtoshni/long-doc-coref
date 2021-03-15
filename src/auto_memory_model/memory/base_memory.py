@@ -14,10 +14,7 @@ class BaseMemory(nn.Module):
         self.device = device
 
         self.dataset = dataset
-        if self.dataset == 'litbank':
-            self.num_feats = 3
-        elif self.dataset == 'ontonotes':
-            self.num_feats = 4
+        self.num_feats = 4
 
         self.max_ents = max_ents
         self.sample_invalid = sample_invalid
@@ -42,7 +39,6 @@ class BaseMemory(nn.Module):
         if self.entity_rep == 'learned_avg':
             self.alpha = MLP(2 * self.mem_size, 300, 1, num_hidden_layers=1, bias=True, drop_module=drop_module)
 
-        self.last_action_embeddings = nn.Embedding(5, self.emb_size)
         self.distance_embeddings = nn.Embedding(10, self.emb_size)
         self.counter_embeddings = nn.Embedding(10, self.emb_size)
 

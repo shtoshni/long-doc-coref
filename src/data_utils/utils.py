@@ -14,7 +14,7 @@ def load_data(data_dir, max_segment_len, dataset='litbank', singleton_file=None)
 
     train_data, dev_data, test_data = all_splits
 
-    if singleton_file is not None and path.exists(singleton_file):
+    if singleton_file is not None and path.exists(singleton_file) and dataset == 'ontonotes':
         num_singletons = 0
         with open(singleton_file) as f:
             singleton_data = json.loads(f.read())

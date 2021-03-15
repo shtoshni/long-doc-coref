@@ -1,10 +1,12 @@
 import torch
+import torch.nn as nn
 from auto_memory_model.memory import BaseMemory
 
 
 class MemoryNoInvalid(BaseMemory):
     def __init__(self, **kwargs):
         super(MemoryNoInvalid, self).__init__(**kwargs)
+        self.last_action_embeddings = nn.Embedding(5, self.emb_size)
 
     def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
                 rand_fl_list=None, teacher_forcing=False):

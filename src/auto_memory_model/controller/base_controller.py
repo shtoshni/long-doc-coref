@@ -14,7 +14,7 @@ class BaseController(nn.Module):
                  max_ents=None,
                  emb_size=20, sample_invalid=1.0,
                  label_smoothing_wt=0.0,
-                 dataset='litbank', device='cuda', use_gold_ments=False, **kwargs):
+                 dataset='joint', device='cuda', use_gold_ments=False, **kwargs):
         super(BaseController, self).__init__()
 
         self.device = device
@@ -41,9 +41,9 @@ class BaseController(nn.Module):
         self.ment_emb = ment_emb
         self.ment_emb_to_size_factor = {'attn': 3, 'endpoint': 2, 'max': 1}
 
-        if self.dataset == 'ontonotes':
+        if self.dataset == 'ontonotes' or self.dataset == 'joint':
             # Ontonotes - Genre embedding
-            self.genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
+            self.genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb", "litbank"]
             self.genre_to_idx = dict()
             for idx, genre in enumerate(self.genre_list):
                 self.genre_to_idx[genre] = idx
@@ -56,7 +56,7 @@ class BaseController(nn.Module):
         # Mention modeling part
         self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
         self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
-        self.mention_mlp = MLP(input_size=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
+        self.mention_mlp = MLP(input_size=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 2 * self.emb_size,
                                hidden_size=self.mlp_size,
                                output_size=1, num_hidden_layers=1, bias=True,
                                drop_module=self.drop_module)
@@ -71,13 +71,15 @@ class BaseController(nn.Module):
         self.max_ents = max_ents
         self.memory_net.max_ents = max_ents
 
-    def get_span_embeddings(self, encoded_doc, ment_starts, ment_ends):
+    def get_span_embeddings(self, encoded_doc, genre_emb, ment_starts, ment_ends):
         span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
         # Add span width embeddings
         span_width_indices = torch.clamp(ment_ends - ment_starts, max=self.max_span_width)
         # print(span_width_indices)
-        span_width_embs = self.drop_module(self.span_width_embeddings(span_width_indices))
+        span_width_embs = self.span_width_embeddings(span_width_indices)
+
         span_emb_list.append(span_width_embs)
+        span_emb_list.append(genre_emb.repeat(ment_starts.shape[0], 1))
 
         if self.ment_emb == 'attn':
             num_words = encoded_doc.shape[0]  # T
@@ -109,7 +111,7 @@ class BaseController(nn.Module):
 
         return width_scores
 
-    def get_candidate_endpoints(self, encoded_doc, example):
+    def get_candidate_endpoints(self, encoded_doc, example, return_mask=False):
         num_words = encoded_doc.shape[0]
 
         sent_map = torch.tensor(example["sentence_map"], device=self.device)
@@ -133,7 +135,10 @@ class BaseController(nn.Module):
         # Filter and flatten the candidate end points
         filt_cand_starts = cand_starts.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
-        return filt_cand_starts, filt_cand_ends
+        output = (filt_cand_starts, filt_cand_ends)
+        if return_mask:
+            output = output + (flat_cand_mask,)
+        return output
 
     def get_pred_mentions(self, example, encoded_doc, topk=False):
         # num_words = (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1)
@@ -141,7 +146,8 @@ class BaseController(nn.Module):
 
         filt_cand_starts, filt_cand_ends = self.get_candidate_endpoints(encoded_doc, example)
 
-        span_embs = self.get_span_embeddings(encoded_doc, filt_cand_starts, filt_cand_ends)
+        span_embs = self.get_span_embeddings(encoded_doc, self.get_genre_embedding(example),
+                                             filt_cand_starts, filt_cand_ends)
 
         mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
         # Span embeddings not needed anymore
@@ -171,10 +177,8 @@ class BaseController(nn.Module):
 
         return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices]
 
-    def get_mention_embs(self, example, max_training_segments=None):
-        encoded_doc = self.doc_encoder(example, max_training_segments=max_training_segments)
-        # pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
-        # print(pred_starts.shape)
+    def get_mention_embs(self, example):
+        encoded_doc = self.doc_encoder(example)
         if not self.use_gold_ments:
             pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
         else:
@@ -191,7 +195,10 @@ class BaseController(nn.Module):
         pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
         pred_scores = torch.unbind(torch.unsqueeze(pred_scores, dim=1))
 
-        mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
+        genre_emb = self.get_genre_embedding(example)
+        mention_embs = self.get_span_embeddings(encoded_doc, genre_emb, pred_starts, pred_ends)
+
+        del encoded_doc
 
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
@@ -238,8 +245,8 @@ class BaseController(nn.Module):
         if genre in self.genre_to_idx:
             genre_idx = self.genre_to_idx[genre]
         else:
-            genre_idx = self.genre_to_idx['nw']
+            genre_idx = self.genre_to_idx['litbank']
         return self.genre_embeddings(torch.tensor(genre_idx, device=self.device))
 
-    def forward(self, example, teacher_forcing=False, max_training_segments=None):
+    def forward(self, example, teacher_forcing=False):
         pass

@@ -29,13 +29,13 @@ def main():
                         help='Model directory', type=str)
 
     parser.add_argument(
-        '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
+        '-dataset', default='joint', choices=['joint'], type=str)
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
 
     parser.add_argument('-model_size', default='large', type=str,
-                        help='BERT model type')
+                        help='BERT model size')
     parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
     parser.add_argument('-pretrained_bert_dir', default='../resources', type=str,
@@ -70,8 +70,6 @@ def main():
     # Training params
     parser.add_argument('-cross_val_split', default=0, type=int,
                         help='Cross validation split to be used.')
-    parser.add_argument('-use_curriculum', default=False, action="store_true",
-                        help='Use curriculum learning by increasing max document length during training.')
     parser.add_argument('-new_ent_wt', help='Weight of new entity term in coref loss',
                         default=1.0, type=float)
     parser.add_argument('-num_train_docs', default=None, type=int,
@@ -87,18 +85,22 @@ def main():
     parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
                         help='Label Smoothing')
     parser.add_argument('-max_epochs',
-                        help='Maximum number of epochs', default=30, type=int)
+                        help='Maximum number of epochs', default=25, type=int)
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=2e-4, type=float)
-    parser.add_argument('-warmup_frac', default=0.1, type=float,
-                        help="Fraction of total steps for warming up")
+    parser.add_argument('-alpha_ontonotes', default=0.0, type=float, help='Reduce Ontonotes examples')
     parser.add_argument('-lr_decay', default='inv', type=str,
                         help="Decay mechanism used for learning rate decay")
-
+    parser.add_argument('-warmup_frac', default='0.1', type=float,
+                        help="Fraction of training steps for warmup")
+    parser.add_argument('-sample_ontonotes_prob', help="Sampling probability for OntoNotes examples",
+                        default=0.0, type=float)
+    parser.add_argument('-sample_litbank_prob', help="Sampling probability for LitBank examples",
+                        default=1.0, type=float)
     parser.add_argument('-train_with_singletons', help="Train on singletons.",
-                        default=False, action="store_true")
+                        default=True, action="store_true")
     parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
                         default=False, action="store_true")
     parser.add_argument('-slurm_id', help="Slurm ID",
@@ -112,10 +114,14 @@ def main():
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size', 'mlp_depth',  # Memory params
-                'dropout_rate', 'seed', 'init_lr', 'use_curriculum', 'warmup_frac', 'lr_decay',
-                "new_ent_wt", 'sample_invalid',  'max_training_segments', 'label_smoothing_wt',  # weights & sampling
-                'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
+                'dropout_rate', 'seed',
+                'max_training_segments', 'label_smoothing_wt',  # weights & sampling
+                'num_train_docs', 'dataset', 'cross_val_split',
+                'sample_ontonotes_prob', 'sample_litbank_prob'  # Dataset params
                 ]
+
+    if args.sample_ontonotes_prob:
+        imp_opts.append('alpha_ontonotes')
 
     if args.singleton_file is not None and path.exists(args.singleton_file):
         imp_opts.append('singleton_file')
@@ -126,15 +132,6 @@ def main():
         imp_opts.append('max_ents')
     else:
         args.max_ents = None
-
-    if args.dataset == 'litbank':
-        args.max_span_width = 20
-        # Cross-validation split is only important for litbank
-        imp_opts.append('cross_val_split')
-    elif args.dataset == 'ontonotes':
-        args.max_span_width = 30
-    else:
-        args.max_span_width = 20
 
     for key, val in vars(args).items():
         if key in imp_opts:
@@ -161,25 +158,18 @@ def main():
 
     print("Model directory:", args.model_dir)
 
-    if args.data_dir is None:
-        if args.dataset == 'litbank':
-            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
-            args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll/{args.cross_val_split}')
-        elif args.dataset == 'ontonotes':
-            if args.train_with_singletons:
-                enc_str = "_singletons"
-            else:
-                enc_str = ""
-            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}{enc_str}')
-            args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
-    else:
-        if args.dataset == 'ontonotes':
-            args.conll_data_dir = path.join(path.dirname(args.data_dir.rstrip("/")), "conll")
+    args.data_dir = {'ontonotes': path.join(args.base_data_dir, f'ontonotes/{args.doc_enc}'),
+                     'litbank': path.join(args.base_data_dir, f'litbank/{args.doc_enc}/{args.cross_val_split}')
+                     }
+    args.conll_data_dir = {'ontonotes': path.join(args.base_data_dir, f'ontonotes/conll'),
+                           'litbank': path.join(args.base_data_dir, f'litbank/conll/{args.cross_val_split}')
+                           }
 
     print(args.data_dir)
     print(args.conll_data_dir)
 
     # Get mention model name
+    # HACK - Switch the dataset name to pick up litbank mention model and then switch it back
     args.pretrained_mention_model = path.join(
         path.join(args.base_model_dir, get_mention_model_name(args)), "best_models/model.pth")
     print(args.pretrained_mention_model)

@@ -11,7 +11,10 @@ def get_mention_model_name(args):
     model_name_suffix += 'enc_' + f'{args.doc_enc}' + '_'
     model_name_suffix += 'segment_' + f'{args.max_segment_len}' + '_'
 
-    if args.dataset == 'litbank':
+    if args.sample_ontonotes_prob != 0.0:
+        model_name_suffix += f'samp_onto_{args.sample_ontonotes_prob}_'
+
+    if args.dataset == 'litbank' or args.dataset == 'joint':
         model_name_suffix += 'split_' + f'{args.cross_val_split}' + '_'
 
     if model_name_suffix[-1] == '_':

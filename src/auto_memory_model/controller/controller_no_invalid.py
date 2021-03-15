@@ -12,14 +12,14 @@ class ControllerNoInvalid(BaseController):
         super(ControllerNoInvalid, self).__init__(**kwargs)
 
         self.memory_net = MemoryNoInvalid(
-            hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
+            hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + 2 * self.emb_size,
             drop_module=self.drop_module, **kwargs)
 
-    def forward(self, example, teacher_forcing=False, max_training_segments=None):
+    def forward(self, example, teacher_forcing=False):
         """
         Encode a batch of excerpts.
         """
-        encoded_doc = self.doc_encoder(example, max_training_segments=max_training_segments)
+        encoded_doc = self.doc_encoder(example)
         pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc, topk=True)
 
         # Sort the predicted mentions

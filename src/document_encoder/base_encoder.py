@@ -9,6 +9,7 @@ class BaseDocEncoder(nn.Module):
         self.device = device
 
         self.max_training_segments = max_training_segments
+        print("Max training segments:", self.max_training_segments)
 
         # Check if the pretrained bert directory argument has the spanbert models
         if pretrained_bert_dir and path.exists(path.join(pretrained_bert_dir, "spanbert_{}".format(model_size))):

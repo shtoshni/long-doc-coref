@@ -8,6 +8,7 @@ import json
 from collections import defaultdict, OrderedDict
 import numpy as np
 from transformers import get_linear_schedule_with_warmup
+from copy import deepcopy
 
 from auto_memory_model.utils import action_sequences_to_clusters
 from data_utils.utils import load_data
@@ -35,6 +36,8 @@ class Experiment:
                  mem_type="unbounded", train_with_singletons=False,
                  eval_max_ents=None, use_gold_ments=False, use_curriculum=True,
                  lr_decay='linear', warmup_frac=0.0,
+                 sample_ontonotes_prob=0.05, sample_litbank_prob=1.0,
+                 alpha_ontonotes=0.0,
                  # Other params
                  slurm_id=None, conll_data_dir=None, conll_scorer=None, **kwargs):
         self.args = args
@@ -46,40 +49,48 @@ class Experiment:
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
         self.dataset = dataset
-        self.train_examples, self.dev_examples, self.test_examples \
-            = load_data(data_dir, max_segment_len, dataset=self.dataset,
-                        singleton_file=singleton_file)
-        if num_train_docs is not None:
-            self.train_examples = self.train_examples[:num_train_docs]
-        if num_eval_docs is not None:
-            self.dev_examples = self.dev_examples[:num_eval_docs]
-            self.test_examples = self.test_examples[:num_eval_docs]
 
-        self.train_with_singletons = train_with_singletons
+        self.train_examples = {}
+        self.dev_examples = {}
+        self.test_examples = {}
+        for cur_dataset, dataset_dir in data_dir.items():
+            train_examples, dev_examples, test_examples \
+                = load_data(dataset_dir, max_segment_len, dataset=cur_dataset, singleton_file=singleton_file)
+            if num_train_docs is not None:
+                train_examples = train_examples[:num_train_docs]
 
-        if train_with_singletons:
-            self.cluster_threshold = 1
-        else:
-            self.cluster_threshold = 2
-            # Remove singletons from training set
-            self.train_examples = remove_singletons(self.train_examples)
+            self.train_examples[cur_dataset] = train_examples
+            # self.train_examples.extend(train_examples)
 
-        self.canonical_cluster_threshold = 1
-        if self.dataset == 'litbank':
-            self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
-            self.max_stuck_epochs = 10  # Maximum epochs without improvement in dev performance
-            self.canonical_cluster_threshold = 1
-        else:
-            # OntoNotes
-            self.update_frequency = 100
-            self.max_stuck_epochs = 10
-            self.canonical_cluster_threshold = 2
+            if num_eval_docs is not None:
+                dev_examples = dev_examples[:num_eval_docs]
+                test_examples = test_examples[:num_eval_docs]
+
+            self.dev_examples[cur_dataset] = dev_examples
+            self.test_examples[cur_dataset] = test_examples
 
         self.data_iter_map = {"train": self.train_examples,
                               "dev": self.dev_examples,
                               "test": self.test_examples}
 
+        self.sample_ontonotes_prob = sample_ontonotes_prob
+        self.sample_litbank_prob = sample_litbank_prob
+        self.alpha_ontonotes = alpha_ontonotes
+
+        self.train_with_singletons = train_with_singletons
+        if train_with_singletons:
+            self.cluster_threshold = 1
+        else:
+            self.cluster_threshold = 2
+            # Remove singletons from training set
+            self.train_examples = {}
+            for cur_dataset, examples in self.train_examples.items():
+                self.train_examples[cur_dataset] = remove_singletons(self.train_examples[cur_dataset])
+
         self.max_epochs = max_epochs
+        self.max_stuck_epochs = 10  # Maximum epochs without improvement in dev performance
+        self.update_frequency = 25
+        self.canonical_cluster_threshold = {'litbank': 1, 'ontonotes': 2}
         self.use_curriculum = use_curriculum
 
         self.slurm_id = slurm_id  # Useful to keep this around for grid searches
@@ -145,7 +156,16 @@ class Experiment:
                 param_list.append(param)
 
         self.optimizer = torch.optim.AdamW(param_list, lr=init_lr, eps=1e-6)
-        num_training_steps = len(self.train_examples) * self.max_epochs
+
+        num_training_steps = 0
+        for epoch in range(self.max_epochs):
+            num_ontonotes_examples = int(self.sample_ontonotes_prob * np.exp(-self.alpha_ontonotes * epoch) *
+                                         len(self.train_examples['ontonotes']))
+            num_litbank_examples = int(self.sample_litbank_prob * len(self.train_examples['litbank']))
+
+            num_training_steps += (num_litbank_examples + num_ontonotes_examples)
+
+        logging.info("Expected number of training steps: %d\n\n" %num_training_steps)
         num_warmup_steps = warmup_frac * num_training_steps
 
         if lr_decay == 'inv':
@@ -178,32 +198,34 @@ class Experiment:
             return
 
         for epoch in range(epochs_done, max_epochs):
-            logger.info("\n\nStart Epoch %d" % (epoch + 1))
             start_time = time.time()
             # Setup training
             model.train()
-            np.random.shuffle(self.train_examples)
-            # pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
 
-            if self.use_curriculum:
-                max_training_segments = model.doc_encoder.max_training_segments
-                if max_training_segments is not None:
-                    import math
-                    # Linearly increase max training segments as a function of epochs
-                    cur_max_training_segments = int(math.ceil((max_training_segments * (epoch + 1))/max_epochs))
-                else:
-                    cur_max_training_segments = None
-            else:
-                # No curriculume
-                cur_max_training_segments = model.doc_encoder.max_training_segments
+            num_ontonotes_examples = int(self.sample_ontonotes_prob * np.exp(-self.alpha_ontonotes * epoch) *
+                                         len(self.train_examples['ontonotes']))
+            num_litbank_examples = int(self.sample_litbank_prob * len(self.train_examples['litbank']))
 
-            for cur_example in self.train_examples:
+            train_examples = []
+            if num_ontonotes_examples > 0:
+                np.random.shuffle(self.train_examples['ontonotes'])
+                train_examples += self.train_examples['ontonotes'][:num_ontonotes_examples]
+
+            # np.random.shuffle(self.train_examples['litbank'])
+            train_examples += deepcopy(self.train_examples['litbank'][:num_litbank_examples])
+            np.random.shuffle(train_examples)
+
+            training_size = len(train_examples)
+            update_frequency = max(1, training_size // 10)
+
+            logger.info("\n\nStart Epoch %d, # of Training Examples: %d" % (epoch + 1, len(train_examples)))
+
+            for cur_example in train_examples:
                 def handle_example(example):
                     optimizer.zero_grad()
 
                     # Send the copy of the example, as the document could be truncated during training
-                    from copy import deepcopy
-                    loss = model(deepcopy(example), max_training_segments=cur_max_training_segments)[0]
+                    loss = model(deepcopy(example))[0]
                     total_loss = loss['total']
                     if total_loss is None:
                         return None
@@ -225,7 +247,7 @@ class Experiment:
 
                 example_loss = handle_example(cur_example)
 
-                if self.train_info['global_steps'] % self.update_frequency == 0:
+                if self.train_info['global_steps'] % update_frequency == 0:
                     logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
                         cur_example["doc_key"], example_loss,
                         (torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
@@ -242,8 +264,8 @@ class Experiment:
             # Update epochs done
             self.train_info['epoch'] = epoch + 1
 
-            # Dev performance
-            cluster_threshold = max(self.cluster_threshold, self.canonical_cluster_threshold)
+            # Dev performance - Litbank
+            cluster_threshold = 1
             # print("Cluster threshold:", cluster_threshold)
             fscore = self.eval_model(cluster_threshold=cluster_threshold)['fscore']
 
@@ -271,13 +293,13 @@ class Experiment:
             if self.train_info['num_stuck_epochs'] >= self.max_stuck_epochs:
                 return
 
-    def eval_model(self, split='dev', final_eval=False, cluster_threshold=1):
+    def eval_model(self, split='dev', dataset='litbank', final_eval=False, cluster_threshold=1):
         """Eval model"""
         # Set the random seed to get consistent results
         model = self.model
         model.eval()
 
-        data_iter = self.data_iter_map[split]
+        data_iter = self.data_iter_map[split][dataset]
 
         pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
         num_gt_clusters, num_pred_clusters = 0, 0
@@ -285,7 +307,7 @@ class Experiment:
         inference_time = 0.0
 
         with torch.no_grad():
-            log_file = path.join(self.model_dir, split + ".log.jsonl")
+            log_file = path.join(self.model_dir, f"{split}_{dataset}.log.jsonl")
             with open(log_file, 'w') as f:
                 # Capture the auxiliary action accuracy
                 corr_actions = 0.0
@@ -364,14 +386,14 @@ class Experiment:
 
                 # (1) Only use CoNLL evaluator script for final evaluation
                 # (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
-                use_conll = (cluster_threshold == self.canonical_cluster_threshold)
+                use_conll = (cluster_threshold == self.canonical_cluster_threshold[dataset])
                 # (3) Check if the scorer and CoNLL annotation directory exist
-                path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir)
+                path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir[dataset])
 
                 try:
                     if final_eval and use_conll and path_exists_bool:
-                        gold_path = path.join(self.conll_data_dir, f'{split}.conll')
-                        prediction_file = path.join(self.model_dir, f'{split}.conll')
+                        gold_path = path.join(self.conll_data_dir[dataset], f'{split}.conll')
+                        prediction_file = path.join(self.model_dir, f'{split}_{dataset}.conll')
                         conll_results = evaluate_conll(
                             self.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
 
@@ -391,11 +413,11 @@ class Experiment:
                     pass
 
                 logger.info("Action accuracy: %.3f, Oracle F-score: %.3f" %
-                            (corr_actions/total_actions, oracle_evaluator.get_prf()[2]))
+                            (corr_actions/(total_actions + 1e-8), oracle_evaluator.get_prf()[2]))
                 logger.info(log_file)
                 logger.handlers[0].flush()
 
-        logging.info("Inference time: %.2f" % inference_time)
+        logger.info("Inference time: %.2f" % inference_time)
 
         return result_dict
 
@@ -414,28 +436,29 @@ class Experiment:
         for key, val in vars(self.args).items():
             output_dict[key] = val
 
-        for split in ['dev', 'test']:
-            # if self.train_with_singletons:
-            #     cluster_thresholds = [1, 2]
-            # else:
-            #     cluster_thresholds = [2]
-            cluster_thresholds = [self.canonical_cluster_threshold]
-            # if self.cluster_threshold != self.canonical_cluster_threshold:
-            # cluster_thresholds = [1, 2]
-            for cluster_threshold in cluster_thresholds:
-                logging.info('\n')
-                logging.info('%s' % split.capitalize())
-                result_dict = self.eval_model(split, final_eval=True, cluster_threshold=cluster_threshold)
-                if split != 'test':
-                    logging.info('Calculated F1: %.3f' % result_dict['fscore'])
+        for dataset in ['litbank', 'ontonotes']:
+            for split in ['dev', 'test']:
+                # if self.train_with_singletons:
+                #     cluster_thresholds = [1, 2]
+                # else:
+                #     cluster_thresholds = [2]
+                cluster_thresholds = [self.canonical_cluster_threshold[dataset]]
+                # if self.cluster_threshold != self.canonical_cluster_threshold:
+                # cluster_thresholds = [1, 2]
+                for cluster_threshold in cluster_thresholds:
+                    logger.info('\n%s' % split.capitalize())
+                    result_dict = self.eval_model(split, dataset=dataset,
+                                                  final_eval=True, cluster_threshold=cluster_threshold)
+                    if split != 'test':
+                        logger.info('Calculated F1: %.3f' % result_dict['fscore'])
 
-                output_dict[f"{split}_{cluster_threshold}"] = result_dict
-                if cluster_threshold == self.canonical_cluster_threshold:
-                    output_dict[f"{split}"] = result_dict
+                    output_dict[f"{split}_{dataset}_{cluster_threshold}"] = result_dict
+                    if cluster_threshold == self.canonical_cluster_threshold[dataset]:
+                        output_dict[f"{split}_{dataset}"] = result_dict
 
         json.dump(output_dict, open(perf_file, 'w'), indent=2)
 
-        logging.info("Final performance summary at %s" % perf_file)
+        logger.info("Final performance summary at %s" % perf_file)
         sys.stdout.flush()
 
     def load_model(self, location, model_type='last'):
@@ -476,4 +499,4 @@ class Experiment:
             })
 
         torch.save(save_dict, location)
-        logging.info(f"Model saved at: {location}")
+        logger.info(f"Model saved at: {location}")

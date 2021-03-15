@@ -5,6 +5,7 @@ import time
 import logging
 import torch
 from collections import defaultdict, OrderedDict
+from copy import deepcopy
 
 import numpy as np
 import pytorch_utils.utils as utils
@@ -17,14 +18,15 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 
 class Experiment:
-    def __init__(self, data_dir=None, dataset='litbank',
+    def __init__(self, data_dir=None,
                  model_dir=None, best_model_dir=None, pretrained_model=None,
                  # Model params
                  seed=0, init_lr=1e-3, max_gradient_norm=5.0,
                  max_epochs=20, max_segment_len=128, eval=False,
-                 num_train_docs=None,
+                 num_train_docs=None, sample_ontonotes_prob=0.0,
+                 singleton_file=None,
                  # Other params
-                 slurm_id=None, train_with_singletons=False,
+                 slurm_id=None, train_with_singletons=True,
                  **kwargs):
 
         self.pretrained_model = pretrained_model
@@ -32,20 +34,29 @@ class Experiment:
         # Set the random seed first
         self.seed = seed
         # Prepare data info
-        self.train_examples, self.dev_examples, self.test_examples \
-            = load_data(data_dir, max_segment_len, dataset=dataset)
-        # self.dev_examples = self.dev_examples[:20]
-        if num_train_docs is not None:
-            self.train_examples = self.train_examples[:num_train_docs]
+        self.train_examples = {}
+        self.dev_examples = {}
+        self.test_examples = {}
+        for cur_dataset, dataset_dir in data_dir.items():
+            train_examples, dev_examples, test_examples \
+                = load_data(dataset_dir, max_segment_len, dataset=cur_dataset, singleton_file=singleton_file)
+            if num_train_docs is not None:
+                train_examples = train_examples[:num_train_docs]
+
+            self.train_examples[cur_dataset] = train_examples
+            self.dev_examples[cur_dataset] = dev_examples
+            self.test_examples[cur_dataset] = test_examples
+
+        self.data_iter_map = {"train": self.train_examples,
+                              "dev": self.dev_examples,
+                              "test": self.test_examples}
+
+        self.sample_ontonotes_prob = sample_ontonotes_prob
 
         if train_with_singletons is False:
             print("Removing singletons")
             self.train_examples, self.dev_examples, self.test_examples = \
                 [remove_singletons(x) for x in [self.train_examples, self.dev_examples, self.test_examples]]
-
-        self.data_iter_map = {"train": self.train_examples,
-                              "valid": self.dev_examples,
-                              "test": self.test_examples}
 
         # Get model paths
         self.model_dir = model_dir
@@ -66,7 +77,7 @@ class Experiment:
                 model_state_dict = torch.load(self.pretrained_model)
                 print(model_state_dict.keys())
                 self.model.load_state_dict(model_state_dict, strict=False)
-                self.eval_model(split='valid')
+                self.eval_model(split='dev')
                 # self.eval_model(split='test')
                 sys.exit()
             else:
@@ -78,8 +89,7 @@ class Experiment:
     def initialize_setup(self, init_lr, lr_decay=10):
         """Initialize model and training info."""
         self.train_info = {}
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=init_lr, eps=1e-6)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=init_lr, eps=1e-6)
         self.optim_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='max', factor=0.5, patience=3,
             min_lr=0.1 * init_lr, verbose=True)
@@ -87,6 +97,10 @@ class Experiment:
         self.train_info['val_perf'] = 0.0
         self.train_info['threshold'] = 0.0
         self.train_info['global_steps'] = 0
+
+        expected_training_examples = (len(self.train_examples['litbank'])
+                                      + int(self.sample_ontonotes_prob * len(self.train_examples['ontonotes'])))
+        print("Expected number of training steps:", expected_training_examples)
 
         if not path.exists(self.model_path):
             torch.manual_seed(self.seed)
@@ -110,9 +124,15 @@ class Experiment:
             print("\n\nStart Epoch %d" % (epoch + 1))
             start_time = time.time()
             model.train()
-            np.random.shuffle(self.train_examples)
 
-            for idx, cur_example in enumerate(self.train_examples):
+            num_ontonotes_examples = int(self.sample_ontonotes_prob * len(self.train_examples['ontonotes']))
+            train_examples = deepcopy(self.train_examples['litbank'])
+            if num_ontonotes_examples > 0:
+                np.random.shuffle(self.train_examples['ontonotes'])
+                train_examples += self.train_examples['ontonotes'][:num_ontonotes_examples]
+            np.random.shuffle(train_examples)
+
+            for idx, cur_example in enumerate(train_examples):
                 def handle_example(train_example):
                     self.train_info['global_steps'] += 1
                     loss = model(train_example)
@@ -130,7 +150,6 @@ class Experiment:
 
                     optimizer.step()
 
-                from copy import deepcopy
                 handle_example(deepcopy(cur_example))
 
                 if (idx + 1) % 50 == 0:
@@ -141,7 +160,7 @@ class Experiment:
 
             # Update epochs done
             self.train_info['epoch'] = epoch + 1
-            # Validation performance
+            # Development set performance
             fscore, threshold = self.eval_model()
 
             scheduler.step(fscore)
@@ -169,13 +188,13 @@ class Experiment:
 
         return total_corr, torch.sum(pred_mentions), torch.sum(gold_mentions)
 
-    def eval_model(self, split='valid', threshold=None):
+    def eval_model(self, split='dev', dataset='litbank', threshold=None):
         """Eval model"""
         # Set the random seed to get consistent results
         model = self.model
         model.eval()
 
-        dev_examples = self.data_iter_map[split]
+        dev_examples = self.data_iter_map[split][dataset]
 
         with torch.no_grad():
             total_recall = 0
@@ -204,7 +223,7 @@ class Experiment:
                     recall = x['corr']/x['total_y']
                     x['fscore'] = 2 * prec * recall/(prec + recall + EPS)
                 else:
-                    threshold_range = np.arange(0.0, 0.5, 0.01)
+                    threshold_range = np.arange(0.0, 1.0, 0.05)
                     for cur_threshold in threshold_range:
                         corr, total_preds, total_y = self.eval_preds(
                             preds, y, threshold=cur_threshold)
@@ -246,15 +265,16 @@ class Experiment:
 
         perf_file = path.join(self.model_dir, "perf.txt")
         with open(perf_file, 'w') as f:
-            for split in ['Train', 'Valid', 'Test']:
-                logging.info('\n')
-                logging.info('%s' % split)
-                split_f1, _ = self.eval_model(
-                    split.lower(), threshold=threshold)
-                logging.info('Calculated F1: %.3f' % split_f1)
+            for dataset in ['litbank', 'ontonotes']:
+                for split in ['Dev', 'Test']:
+                    logging.info('\n')
+                    logging.info('%s' % split)
+                    split_f1, _ = self.eval_model(
+                        split.lower(), dataset=dataset, threshold=threshold)
+                    logging.info('Calculated F1 (%s): %.3f' % (dataset, split_f1))
 
-                f.write("%s\t%.4f\n" % (split, split_f1))
-            logging.info("Final performance summary at %s" % perf_file)
+                    f.write("%s\t%.4f\n" % (split, split_f1))
+                logging.info("Final performance summary at %s" % perf_file)
 
         sys.stdout.flush()
 
