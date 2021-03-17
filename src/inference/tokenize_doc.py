@@ -21,6 +21,7 @@ class DocumentState(object):
         self.subtoken_map = []
         self.segment_subtoken_map = []
         self.sentence_map = []
+        self.part_lens = []
 
     def finalize(self):
         subtoken_map = flatten(self.segment_subtoken_map)
@@ -34,6 +35,7 @@ class DocumentState(object):
             "end_indices": self.end_indices,
             'sentence_map': [0] * num_words,  # Assume no sentence boundaries are specified
             "subtoken_map": subtoken_map,
+            "part_lens": self.part_lens,
         }
 
 
@@ -99,44 +101,53 @@ def split_into_segments(document_state, constraints1, constraints2):
             current = ovlp_current
 
 
-def get_tokenized_doc(doc, tokenizer):
-    document_state = DocumentState()
-    if isinstance(doc, list):
-        for word_idx, word in enumerate(doc):
-            word = normalize_word(word)
-            subtokens = tokenizer.tokenize(word)
-            document_state.tokens.append(word)
-            document_state.token_end += ([False]
-                                         * (len(subtokens) - 1)) + [True]
-            for sidx, subtoken in enumerate(subtokens):
-                document_state.subtokens.append(subtoken)
-                document_state.sentence_end.append(False)
-                document_state.subtoken_map.append(word_idx)
+def get_tokenized_doc(doc_str, tokenizer, document_state=None):
+    word_idx = -1
+
+    if document_state is None:
+        document_state = DocumentState()
     else:
-        tokenized_doc = tokenizer.tokenize(doc)
-        word_idx = -1
-        for idx, token in enumerate(tokenized_doc):
-            if not BERT_RE.match(token):
-                word_idx += 1
+        if len(document_state.subtoken_map):
+            word_idx = document_state.subtoken_map[-1]
 
-            document_state.tokens.append(token)
-            # Subtoken and token are same
-            document_state.subtokens.append(token)
-            if idx == len(tokenized_doc) - 1:
-                # End of document
-                document_state.token_end += ([True])
+    tokenized_doc = tokenizer.tokenize(doc_str)
+
+    for idx, token in enumerate(tokenized_doc):
+        if not BERT_RE.match(token):
+            word_idx += 1
+
+        document_state.tokens.append(token)
+        # Subtoken and token are same
+        document_state.subtokens.append(token)
+        if idx == len(tokenized_doc) - 1:
+            # End of document
+            document_state.token_end += ([True])
+        else:
+            next_token = tokenized_doc[idx + 1]
+            if BERT_RE.match(next_token):
+                # If the next token has ## at the start then the current subtoken
+                # is clearly not the end of the token
+                document_state.token_end += ([False])
             else:
-                next_token = tokenized_doc[idx + 1]
-                if BERT_RE.match(next_token):
-                    # If the next token has ## at the start then the current subtoken
-                    # is clearly not the end of the token
-                    document_state.token_end += ([False])
-                else:
-                    document_state.token_end += ([True])
+                document_state.token_end += ([True])
 
-            document_state.subtoken_map.append(word_idx)
-            document_state.sentence_end.append(False)  # No info on sentence end
+        document_state.subtoken_map.append(word_idx)
+        document_state.sentence_end.append(False)  # No info on sentence end
+    return document_state
 
+
+def tokenize_and_segment_doc(doc_str, tokenizer):
+    document_state = get_tokenized_doc(doc_str, tokenizer)
+    split_into_segments(document_state, document_state.sentence_end, document_state.token_end)
+    document = document_state.finalize()
+    return document
+
+
+def tokenize_and_segment_doc_list(doc_list, tokenizer):
+    document_state = DocumentState()
+    for doc_str in doc_list:
+        get_tokenized_doc(doc_str, tokenizer, document_state=document_state)
+        document_state.part_lens.append(len(document_state.tokens))
     split_into_segments(document_state, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()
     return document
