@@ -3,7 +3,7 @@ import json
 from transformers import BertTokenizer, BertTokenizerFast
 from auto_memory_model.utils import action_sequences_to_clusters
 from auto_memory_model.controller.utils import pick_controller
-from inference.tokenize_doc import get_tokenized_doc, flatten
+from inference.tokenize_doc import tokenize_and_segment_doc, tokenize_and_segment_doc_list, flatten
 
 
 class Inference:
@@ -21,8 +21,10 @@ class Inference:
         self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
 
     def perform_coreference(self, doc, doc_key="nw", num_sents=None):
-        if isinstance(doc, str) or isinstance(doc, list):
-            tokenized_doc = get_tokenized_doc(doc, self.tokenizer)
+        if isinstance(doc, str):
+            tokenized_doc = tokenize_and_segment_doc(doc, self.tokenizer)
+        elif isinstance(doc, list):
+            tokenized_doc = tokenize_and_segment_doc_list(doc, self.tokenizer)
         elif isinstance(doc, dict):
             tokenized_doc = doc
         else:
@@ -32,7 +34,7 @@ class Inference:
         tokenized_doc["doc_key"] = doc_key
 
         # print(len(tokenized_doc["sentences"]))
-        output_doc_dict = {"sentences": tokenized_doc["sentences"], "subtoken_map": tokenized_doc["subtoken_map"]}
+        output_doc_dict = tokenized_doc
         if num_sents is not None:
             tokenized_doc["sentences"] = tokenized_doc["sentences"][:num_sents]
             output_doc_dict["sentences"] = tokenized_doc["sentences"]
@@ -43,7 +45,7 @@ class Inference:
         subtoken_map = tokenized_doc["subtoken_map"]
 
         with torch.no_grad():
-            _, pred_actions, pred_mentions, _ = self.model(tokenized_doc)
+            _, pred_actions, pred_mentions, _, _ = self.model(tokenized_doc)
 
         idx_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
 
@@ -55,10 +57,11 @@ class Inference:
         for idx_cluster in idx_clusters:
             cur_cluster = []
             for (ment_start, ment_end) in idx_cluster:
-                cur_cluster.append(((subtoken_map[ment_start], subtoken_map[ment_end]),
+                cur_cluster.append(((ment_start, ment_end),
                                     self.tokenizer.convert_tokens_to_string(doc_tokens[ment_start: ment_end + 1])))
 
             clusters.append(cur_cluster)
 
         return {"tokenized_doc": output_doc_dict, "clusters": clusters,
-                "subtoken_idx_clusters": idx_clusters, "actions": pred_actions}
+                "subtoken_idx_clusters": idx_clusters, "actions": pred_actions,
+                "mentions": pred_mentions}
