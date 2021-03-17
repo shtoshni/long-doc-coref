@@ -29,6 +29,8 @@ class BaseMemory(nn.Module):
         self.emb_size = emb_size
         self.entity_rep = entity_rep
 
+        self.new_ent_score = 0.0
+
         self.drop_module = drop_module
 
         # 4 Actions + 1 Dummy start action
@@ -140,7 +142,7 @@ class BaseMemory(nn.Module):
 
         coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0]).to(self.device)], dim=0)
         # Append dummy score of 0.0 for new entity
-        coref_new_scores = torch.cat(([coref_score, torch.tensor([0.0]).to(self.device)]), dim=0)
+        coref_new_scores = torch.cat(([coref_score, torch.tensor([self.new_ent_score]).to(self.device)]), dim=0)
 
         coref_new_not_scores = coref_new_scores * coref_new_mask + (1 - coref_new_mask) * (-1e4)
         return coref_new_not_scores
