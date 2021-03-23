@@ -12,7 +12,7 @@ The codebase has been tested for:
 ```
 python==3.6
 torch==1.6.0
-transformers==3.0.0
+transformers==4.2.2
 scipy==1.4.1
 ```
 These are the core requirements which can be separately installed or just do:
