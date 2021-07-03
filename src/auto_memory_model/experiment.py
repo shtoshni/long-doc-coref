@@ -69,11 +69,15 @@ class Experiment:
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
             self.max_stuck_epochs = 10  # Maximum epochs without improvement in dev performance
             self.canonical_cluster_threshold = 1
-        else:
+        elif self.dataset == 'ontonotes':
             # OntoNotes
             self.update_frequency = 100
             self.max_stuck_epochs = 10
             self.canonical_cluster_threshold = 2
+        elif self.dataset == 'wikicoref':
+            self.canonical_cluster_threshold = 2
+        else:
+            self.canonical_cluster_threshold = 1
 
         self.data_iter_map = {"train": self.train_examples,
                               "dev": self.dev_examples,
@@ -97,6 +101,8 @@ class Experiment:
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        print(eval_model)
+        print(self.best_model_path)
         if eval_model:
             checkpoint = torch.load(self.best_model_path, map_location=self.device)
             self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
@@ -414,7 +420,7 @@ class Experiment:
         for key, val in vars(self.args).items():
             output_dict[key] = val
 
-        for split in ['dev', 'test']:
+        for split in ['test']:
             # if self.train_with_singletons:
             #     cluster_thresholds = [1, 2]
             # else:
@@ -443,7 +449,7 @@ class Experiment:
             checkpoint = torch.load(location)
         else:
             checkpoint = torch.load(location, map_location=self.device)
-        self.model.load_state_dict(checkpoint['model'], strict=False)
+        self.model.load_state_dict(checkpoint['model'], strict=True)
         self.train_info = checkpoint['train_info']
 
         if model_type != 'best':

@@ -29,7 +29,7 @@ def main():
                         help='Model directory', type=str)
 
     parser.add_argument(
-        '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
+        '-dataset', default='litbank', choices=['litbank', 'ontonotes', 'quizbowl', 'wikicoref'], type=str)
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
@@ -92,6 +92,7 @@ def main():
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=2e-4, type=float)
+
     parser.add_argument('-warmup_frac', default=0.1, type=float,
                         help="Fraction of total steps for warming up")
     parser.add_argument('-lr_decay', default='inv', type=str,
@@ -161,6 +162,7 @@ def main():
 
     print("Model directory:", args.model_dir)
 
+    args.conll_data_dir = None
     if args.data_dir is None:
         if args.dataset == 'litbank':
             args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
@@ -172,6 +174,11 @@ def main():
                 enc_str = ""
             args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}{enc_str}')
             args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
+        elif args.dataset == 'quizbowl':
+            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
+            args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
+        elif args.dataset == 'wikicoref':
+            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
     else:
         if args.dataset == 'ontonotes':
             args.conll_data_dir = path.join(path.dirname(args.data_dir.rstrip("/")), "conll")
